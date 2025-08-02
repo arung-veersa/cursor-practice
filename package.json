@@ -1,0 +1,9 @@
+{
+    "$schema": "https://json.schemastore.org/package.json",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "echo 'No build process needed - application uses inline styles and JavaScript'"
+    },
+    "devDependencies": {}
+}

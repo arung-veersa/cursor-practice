@@ -19,3 +19,7 @@ Route::post('/payer-dashboard/conflict-data', [PayerDashboardController::class, 
 Route::post('/payer-dashboard/export', [PayerDashboardController::class, 'exportData'])->name('payer.dashboard.export');
 Route::get('/payer-dashboard/filter-options', [PayerDashboardController::class, 'getFilterOptions'])->name('payer.dashboard.filter.options');
 Route::post('/payer-dashboard/statistics', [PayerDashboardController::class, 'getStatistics'])->name('payer.dashboard.statistics');
+
+// New Payer Dashboard with Venn Diagram
+Route::get('/new-payer-dashboard-venn', [PayerDashboardController::class, 'vennDashboard'])->name('payer.dashboard.venn');
+Route::post('/new-payer-dashboard-venn/load-data', [PayerDashboardController::class, 'loadVennData'])->name('payer.dashboard.venn.load.data');

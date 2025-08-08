@@ -163,6 +163,137 @@ class PayerDashboardRepository
     }
 
     /**
+     * Get Venn diagram data (no filters)
+     */
+    public function getVennDiagramData(string $metricToShow = 'CO_TO'): array
+    {
+        try {
+            $query = PayerDashboardQueries::getVennDiagramData($metricToShow);
+            $results = $this->snowflakeService->query($query);
+            
+            return $results;
+        } catch (\Exception $e) {
+            Log::error('Error fetching Venn diagram data: ' . $e->getMessage());
+            throw new \Exception('Failed to fetch Venn diagram data: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get Venn diagram data with filters
+     */
+    public function getVennDiagramDataWithFilters(array $filters = [], string $metricToShow = 'CO_TO'): array
+    {
+        try {
+            $query = PayerDashboardQueries::getVennDiagramDataWithFilters($filters, $metricToShow);
+            $results = $this->snowflakeService->query($query);
+            
+            return $results;
+        } catch (\Exception $e) {
+            Log::error('Error fetching Venn diagram data with filters: ' . $e->getMessage());
+            throw new \Exception('Failed to fetch Venn diagram data with filters: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get Venn record count (no filters)
+     */
+    public function getVennRecordCount(string $metricToShow = 'CO_TO'): array
+    {
+        try {
+            $query = PayerDashboardQueries::getVennRecordCount($metricToShow);
+            $results = $this->snowflakeService->query($query);
+            return $results;
+        } catch (\Exception $e) {
+            Log::error('Error fetching Venn record count: ' . $e->getMessage());
+            throw new \Exception('Failed to fetch Venn record count: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get Venn record count with filters
+     */
+    public function getVennRecordCountWithFilters(array $filters = [], string $metricToShow = 'CO_TO'): array
+    {
+        try {
+            $query = PayerDashboardQueries::getVennRecordCountWithFilters($filters, $metricToShow);
+            $results = $this->snowflakeService->query($query);
+            return $results;
+        } catch (\Exception $e) {
+            Log::error('Error fetching Venn record count with filters: ' . $e->getMessage());
+            throw new \Exception('Failed to fetch Venn record count with filters: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get Venn diagram filter options
+     */
+    public function getVennFilterOptions(): array
+    {
+        try {
+            $query = PayerDashboardQueries::getVennFilterOptions();
+            $results = $this->snowflakeService->query($query);
+            
+            $options = [
+                'costTypes' => [],
+                'visitTypes' => [],
+                'statusFlags' => []
+            ];
+            
+            foreach ($results as $row) {
+                if (!empty($row['COSTTYPE'])) {
+                    $options['costTypes'][] = $row['COSTTYPE'];
+                }
+                if (!empty($row['VISITTYPE'])) {
+                    $options['visitTypes'][] = $row['VISITTYPE'];
+                }
+                if (!empty($row['STATUSFLAG'])) {
+                    $options['statusFlags'][] = $row['STATUSFLAG'];
+                }
+            }
+            
+            // Remove duplicates and sort
+            $options['costTypes'] = array_unique($options['costTypes']);
+            $options['visitTypes'] = array_unique($options['visitTypes']);
+            $options['statusFlags'] = array_unique($options['statusFlags']);
+            
+            sort($options['costTypes']);
+            sort($options['visitTypes']);
+            sort($options['statusFlags']);
+            
+            return $options;
+        } catch (\Exception $e) {
+            Log::error('Error fetching Venn filter options: ' . $e->getMessage());
+            throw new \Exception('Failed to fetch Venn filter options: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get payer options for filter dropdown
+     */
+    public function getPayerOptions(): array
+    {
+        try {
+            $query = PayerDashboardQueries::getPayerOptions();
+            $results = $this->snowflakeService->query($query);
+            
+            $options = [];
+            foreach ($results as $row) {
+                if (!empty($row['PAYER_ID']) && !empty($row['PAYER_NAME'])) {
+                    $options[] = [
+                        'id' => $row['PAYER_ID'],
+                        'name' => $row['PAYER_NAME']
+                    ];
+                }
+            }
+            
+            return $options;
+        } catch (\Exception $e) {
+            Log::error('Error fetching payer options: ' . $e->getMessage());
+            throw new \Exception('Failed to fetch payer options: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Map raw database results to PayerConflictPractice entities
      */
     private function mapToEntities(array $results): array

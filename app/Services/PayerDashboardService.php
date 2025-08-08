@@ -119,6 +119,15 @@ class PayerDashboardService
             $validatedFilters['visitType'] = $this->sanitizeString($filters['visitType']);
         }
         
+        if (isset($filters['payerId']) && !empty($filters['payerId'])) {
+            // Handle multi-select payer IDs
+            if (is_array($filters['payerId'])) {
+                $validatedFilters['payerId'] = array_map([$this, 'sanitizeString'], $filters['payerId']);
+            } else {
+                $validatedFilters['payerId'] = $this->sanitizeString($filters['payerId']);
+            }
+        }
+        
         return $validatedFilters;
     }
 
@@ -179,25 +188,29 @@ class PayerDashboardService
             
             $statistics = [
                 'total_conflicts' => 0,
-                'total_types' => count($conflictData),
+                'total_types' => is_array($conflictData) ? count($conflictData) : 0,
                 'top_conflict_type' => null,
                 'distribution' => []
             ];
             
             foreach ($conflictData as $item) {
-                $count = (int) $item['CONFLICT_COUNT'];
+                if (!is_array($item)) {
+                    continue;
+                }
+                $count = isset($item['CONFLICT_COUNT']) ? (int) $item['CONFLICT_COUNT'] : 0;
+                $type = $item['CONTYPE'] ?? '';
                 $statistics['total_conflicts'] += $count;
                 
                 if ($statistics['top_conflict_type'] === null || 
-                    $count > $statistics['top_conflict_type']['count']) {
+                    $count > ($statistics['top_conflict_type']['count'] ?? -1)) {
                     $statistics['top_conflict_type'] = [
-                        'type' => $item['CONTYPE'],
+                        'type' => $type,
                         'count' => $count
                     ];
                 }
                 
                 $statistics['distribution'][] = [
-                    'type' => $item['CONTYPE'],
+                    'type' => $type,
                     'count' => $count,
                     'percentage' => 0 // Will be calculated after total is known
                 ];
@@ -214,6 +227,153 @@ class PayerDashboardService
         } catch (\Exception $e) {
             Log::error('Error in PayerDashboardService::getConflictStatistics: ' . $e->getMessage());
             throw new \Exception('Failed to calculate conflict statistics: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get Venn diagram data
+     */
+    public function getVennDiagramData(array $filters = [], string $metricToShow = 'CO_TO'): array
+    {
+        try {
+            $vennData = empty($filters) ?
+                $this->repository->getVennDiagramData($metricToShow) :
+                $this->repository->getVennDiagramDataWithFilters($filters, $metricToShow);
+
+            $processed = $this->processVennData($vennData, $metricToShow);
+
+            // Add record_count separately
+            $recordCount = empty($filters)
+                ? $this->repository->getVennRecordCount($metricToShow)
+                : $this->repository->getVennRecordCountWithFilters($filters, $metricToShow);
+
+            // Ensure recordCount is an integer, handling cases where it might be null or an empty array
+            $processed['record_count'] = (int) ($recordCount[0]['RECORD_COUNT'] ?? 0);
+
+            return $processed;
+        } catch (\Exception $e) {
+            Log::error('Error in PayerDashboardService::getVennDiagramData: ' . $e->getMessage());
+            throw new \Exception('Failed to fetch Venn diagram data: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Process Venn diagram data for visualization
+     */
+    private function processVennData(array $vennData, string $metricToShow = 'CO_TO'): array
+    {
+        $processedData = [
+            'sets' => [
+                ['name' => 'Time Overlap', 'size' => 0],
+                ['name' => 'Time Distance', 'size' => 0],
+                ['name' => 'In Service', 'size' => 0]
+            ],
+            'intersections' => [],
+            'total_conflicts' => 0,
+            'vennData' => [] // This will be the format expected by venn.js
+        ];
+
+        $setMapping = [
+            'only_to' => ['Time Overlap'], // Time Overlap only
+            'only_td' => ['Time Distance'], // Time Distance only
+            'only_is' => ['In Service'], // In Service only
+            'both_to_td' => ['Time Overlap', 'Time Distance'], // Time Overlap and Time Distance
+            'both_to_is' => ['Time Overlap', 'In Service'], // Time Overlap and In Service
+            'both_td_is' => ['Time Distance', 'In Service'], // Time Distance and In Service
+            'all_to_td_is' => ['Time Overlap', 'Time Distance', 'In Service'] // All three sets
+        ];
+
+        // Initialize intersection counters
+        $intersections = [
+            'Time Overlap&Time Distance' => 0,
+            'Time Overlap&In Service' => 0,
+            'Time Distance&In Service' => 0,
+            'Time Overlap&Time Distance&In Service' => 0
+        ];
+
+        foreach ($vennData as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $contype = isset($item["CONTYPE"]) ? strtolower((string) $item['CONTYPE']) : '';
+            $count = isset($item['CONFLICT_COUNT']) ? (int) $item['CONFLICT_COUNT'] : 0;
+            $description = $item['CONTYPEDESC'] ?? '';
+
+            $processedData['total_conflicts'] += $count;
+
+            if (isset($setMapping[$contype])) {
+                $sets = $setMapping[$contype];
+                
+                // Add to venn.js data format
+                $processedData['vennData'][] = [
+                    'sets' => $sets,
+                    'size' => $count,
+                    'description' => $description
+                ];
+                
+                // Update individual set sizes and intersections
+                if (count($sets) === 1) {
+                    // Single set (only values)
+                    $setIndex = array_search($sets[0], ['Time Overlap', 'Time Distance', 'In Service']);
+                    if ($setIndex !== false) {
+                        $processedData['sets'][$setIndex]['size'] += $count;
+                    }
+                } elseif (count($sets) === 2) {
+                    // Two-set intersection
+                    $intersectionKey = implode('&', $sets);
+                    $intersections[$intersectionKey] += $count;
+                    
+                    // Also add to individual sets (for total counts)
+                    foreach ($sets as $set) {
+                        $setIndex = array_search($set, ['Time Overlap', 'Time Distance', 'In Service']);
+                        if ($setIndex !== false) {
+                            $processedData['sets'][$setIndex]['size'] += $count;
+                        }
+                    }
+                } elseif (count($sets) === 3) {
+                    // Three-set intersection
+                    $intersections['Time Overlap&Time Distance&In Service'] += $count;
+                    
+                    // Also add to individual sets (for total counts)
+                    foreach ($sets as $set) {
+                        $setIndex = array_search($set, ['Time Overlap', 'Time Distance', 'In Service']);
+                        if ($setIndex !== false) {
+                            $processedData['sets'][$setIndex]['size'] += $count;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Add intersections to processed data
+        $processedData['intersections'] = $intersections;
+
+        return $processedData;
+    }
+
+    /**
+     * Get Venn diagram filter options
+     */
+    public function getVennFilterOptions(): array
+    {
+        try {
+            return $this->repository->getVennFilterOptions();
+        } catch (\Exception $e) {
+            Log::error('Error in PayerDashboardService::getVennFilterOptions: ' . $e->getMessage());
+            throw new \Exception('Failed to fetch Venn filter options: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get payer options for filter dropdown
+     */
+    public function getPayerOptions(): array
+    {
+        try {
+            return $this->repository->getPayerOptions();
+        } catch (\Exception $e) {
+            Log::error('Error in PayerDashboardService::getPayerOptions: ' . $e->getMessage());
+            throw new \Exception('Failed to fetch payer options: ' . $e->getMessage());
         }
     }
 } 

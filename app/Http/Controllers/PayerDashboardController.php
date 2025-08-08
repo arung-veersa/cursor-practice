@@ -236,4 +236,69 @@ class PayerDashboardController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Display the Venn diagram dashboard page
+     */
+    public function vennDashboard(): View
+    {
+        try {
+            // Get initial filter options for dropdowns
+            $filterOptions = $this->payerDashboardService->getVennFilterOptions();
+            $payerOptions = $this->payerDashboardService->getPayerOptions();
+            
+            return view('payer-dashboard.venn', [
+                'filterOptions' => $filterOptions,
+                'payerOptions' => $payerOptions
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error loading Venn dashboard: ' . $e->getMessage());
+            return view('payer-dashboard.venn', [
+                'filterOptions' => [],
+                'payerOptions' => [],
+                'error' => 'Failed to load Venn dashboard: ' . $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Handle loading Venn diagram data
+     */
+    public function loadVennData(Request $request): JsonResponse
+    {
+        try {
+            // Get filters from request (excluding metricToShow)
+            $filters = $request->only([
+                'dateFrom', 
+                'dateTo',
+                'statusFlag', 
+                'costType', 
+                'visitType',
+                'payerId'
+            ]);
+            
+            // Get the metric to show (default to CO_TO)
+            $metricToShow = $request->get('metricToShow', 'CO_TO');
+            
+            // Validate filters
+            $validatedFilters = $this->payerDashboardService->validateFilters($filters);
+            
+            // Get Venn diagram data
+            $vennData = $this->payerDashboardService->getVennDiagramData($validatedFilters, $metricToShow);
+            
+            return response()->json([
+                'success' => true,
+                'data' => $vennData,
+                'appliedFilters' => $validatedFilters,
+                'metricToShow' => $metricToShow,
+                'message' => 'Venn diagram data loaded successfully'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error loading Venn diagram data: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to load Venn diagram data: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 } 

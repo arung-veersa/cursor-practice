@@ -20,6 +20,7 @@ WITH PAYER_LIST AS (
 CONFLICT_ANALYSIS AS (
     -- Combined CTE: Pre-filter, deduplicate, and analyze conflicts in one pass
     SELECT 
+        "CRDATEUNIQUE",
         "CONFLICTID",
         "VisitID",
         "ConVisitID",
@@ -88,8 +89,9 @@ CONFLICT_ANALYSIS AS (
             ELSE 0 
         END AS OVERLAP_AMOUNT
     FROM (
-        -- Pre-filtered and deduplicated conflicts with all computations in one pass
+        -- Create records for both payers when both are active (ensures each payer sees all their conflicts)
         SELECT 
+            V1."CRDATEUNIQUE",
             V1."CONFLICTID",
             V1."VisitID",
             V1."ConVisitID",
@@ -110,12 +112,8 @@ CONFLICT_ANALYSIS AS (
             V1."DistanceFlag",
             V1."InServiceFlag",
             V1."PTOFlag",
-            -- Determine which PayerId this conflict belongs to (pre-computed for performance)
-            CASE 
-                WHEN V1."PayerID" IN (SELECT APID FROM PAYER_LIST) THEN V1."PayerID"
-                WHEN V1."ConPayerID" IN (SELECT APID FROM PAYER_LIST) THEN V1."ConPayerID"
-                ELSE NULL
-            END AS PROCESSING_PAYERID,
+            -- Assign to PayerID when PayerID is active
+            V1."PayerID" AS PROCESSING_PAYERID,
             -- Create Boolean flag for PTO-only conflicts (modularized approach)
             CASE 
                 WHEN V1."PTOFlag" = 'Y' 
@@ -129,14 +127,10 @@ CONFLICT_ANALYSIS AS (
                     AND V1."InServiceFlag" = 'N' THEN 1
                 ELSE 0
             END AS IS_PTO_ONLY_CONFLICT,
-            -- Efficient deduplication using window function
+            -- Global deduplication: deduplicate conflicts first, then assign to payers
+            -- This ensures consistent results regardless of payer list size
             ROW_NUMBER() OVER (
                 PARTITION BY 
-                    CASE 
-                        WHEN V1."PayerID" IN (SELECT APID FROM PAYER_LIST) THEN V1."PayerID"
-                        WHEN V1."ConPayerID" IN (SELECT APID FROM PAYER_LIST) THEN V1."ConPayerID"
-                        ELSE NULL
-                    END,
                     CASE 
                         WHEN V1."VisitID" <= V1."ConVisitID" THEN V1."VisitID" || '|' || V1."ConVisitID"
                         ELSE V1."ConVisitID" || '|' || V1."VisitID"
@@ -146,7 +140,73 @@ CONFLICT_ANALYSIS AS (
         FROM CONFLICTREPORT_SANDBOX.PUBLIC.CONFLICTVISITMAPS AS V1
         INNER JOIN CONFLICTREPORT_SANDBOX.PUBLIC.CONFLICTS AS V2 
             ON V2."CONFLICTID" = V1."CONFLICTID"
-        WHERE (V1."PayerID" IN (SELECT APID FROM PAYER_LIST) OR V1."ConPayerID" IN (SELECT APID FROM PAYER_LIST))
+        WHERE V1."PayerID" IN (SELECT APID FROM PAYER_LIST)
+            -- Pre-filter PTO-only conflicts for performance
+            AND NOT (V1."PTOFlag" = 'Y' 
+                AND V1."SameSchTimeFlag" = 'N' 
+                AND V1."SameVisitTimeFlag" = 'N' 
+                AND V1."SchAndVisitTimeSameFlag" = 'N' 
+                AND V1."SchOverAnotherSchTimeFlag" = 'N' 
+                AND V1."VisitTimeOverAnotherVisitTimeFlag" = 'N' 
+                AND V1."SchTimeOverVisitTimeFlag" = 'N' 
+                AND V1."DistanceFlag" = 'N' 
+                AND V1."InServiceFlag" = 'N')
+        
+        UNION ALL
+        
+        -- Create records for ConPayerID when ConPayerID is active and different from PayerID
+        SELECT 
+            V1."CRDATEUNIQUE",
+            V1."CONFLICTID",
+            V1."VisitID",
+            V1."ConVisitID",
+            V1."ShVTSTTime",
+            V1."ShVTENTime",
+            V1."CShVTSTTime",
+            V1."CShVTENTime",
+            V1."BilledRateMinute",
+            V1."StatusFlag",
+            V1."Billed",
+            V1."VisitStartTime",
+            V1."SameSchTimeFlag",
+            V1."SameVisitTimeFlag",
+            V1."SchAndVisitTimeSameFlag",
+            V1."SchOverAnotherSchTimeFlag",
+            V1."VisitTimeOverAnotherVisitTimeFlag",
+            V1."SchTimeOverVisitTimeFlag",
+            V1."DistanceFlag",
+            V1."InServiceFlag",
+            V1."PTOFlag",
+            -- Assign to ConPayerID when ConPayerID is active
+            V1."ConPayerID" AS PROCESSING_PAYERID,
+            -- Create Boolean flag for PTO-only conflicts (modularized approach)
+            CASE 
+                WHEN V1."PTOFlag" = 'Y' 
+                    AND V1."SameSchTimeFlag" = 'N' 
+                    AND V1."SameVisitTimeFlag" = 'N' 
+                    AND V1."SchAndVisitTimeSameFlag" = 'N' 
+                    AND V1."SchOverAnotherSchTimeFlag" = 'N' 
+                    AND V1."VisitTimeOverAnotherVisitTimeFlag" = 'N' 
+                    AND V1."SchTimeOverVisitTimeFlag" = 'N' 
+                    AND V1."DistanceFlag" = 'N' 
+                    AND V1."InServiceFlag" = 'N' THEN 1
+                ELSE 0
+            END AS IS_PTO_ONLY_CONFLICT,
+            -- Global deduplication: deduplicate conflicts first, then assign to payers
+            -- This ensures consistent results regardless of payer list size
+            ROW_NUMBER() OVER (
+                PARTITION BY 
+                    CASE 
+                        WHEN V1."VisitID" <= V1."ConVisitID" THEN V1."VisitID" || '|' || V1."ConVisitID"
+                        ELSE V1."ConVisitID" || '|' || V1."VisitID"
+                    END
+                ORDER BY V1."CONFLICTID"
+            ) as rn
+        FROM CONFLICTREPORT_SANDBOX.PUBLIC.CONFLICTVISITMAPS AS V1
+        INNER JOIN CONFLICTREPORT_SANDBOX.PUBLIC.CONFLICTS AS V2 
+            ON V2."CONFLICTID" = V1."CONFLICTID"
+        WHERE V1."ConPayerID" IN (SELECT APID FROM PAYER_LIST)
+            AND V1."ConPayerID" != V1."PayerID"  -- Avoid duplicates when both payers are the same
             -- Pre-filter PTO-only conflicts for performance
             AND NOT (V1."PTOFlag" = 'Y' 
                 AND V1."SameSchTimeFlag" = 'N' 
@@ -165,7 +225,7 @@ AGGREGATED_DATA AS (
     -- Aggregate the data by payer, conflict type, status, cost type, and visit type
     SELECT 
         "PROCESSING_PAYERID" AS PAYERID,
-        CURRENT_DATE() AS CRDATEUNIQUE,
+        CRDATEUNIQUE,
         CONTYPE,
         CONTYPEDESC,
         "StatusFlag" AS STATUSFLAG,
@@ -179,6 +239,7 @@ AGGREGATED_DATA AS (
     WHERE CONTYPE IS NOT NULL
     GROUP BY 
         "PROCESSING_PAYERID",
+        CRDATEUNIQUE,
         CONTYPE,
         CONTYPEDESC,
         "StatusFlag",

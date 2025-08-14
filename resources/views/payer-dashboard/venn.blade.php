@@ -22,6 +22,9 @@
     <!-- Chart.js for doughnut chart -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
+    <!-- UpSetJS for UpSet charts -->
+    <script src="https://cdn.jsdelivr.net/npm/@upsetjs/bundle"></script>
+    
     <style>
         .filter-section {
             background-color: #f8f9fa;
@@ -64,6 +67,31 @@
         
         .doughnut-container canvas {
             max-height: 500px !important;
+        }
+        
+        .upset-container {
+            position: relative;
+            height: 600px;
+            margin-bottom: 20px;
+            background-color: #ffffff;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .upset-container #upsetChart {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .upset-container .section-title {
+            margin-bottom: 15px;
+            color: #495057;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 8px;
         }
         
         .venn-container #vennDiagram {
@@ -561,7 +589,7 @@
                                 </div>
                                 <div class="kpi-content">
                                     <div class="kpi-value" id="kpiTotalConflicts">-</div>
-                                    <div class="kpi-label">Total Conflicts</div>
+                                    <div class="kpi-label">Total</div>
                                 </div>
                             </div>
                         </div>
@@ -573,7 +601,7 @@
                     <div class="spinner-border text-primary" role="status">
                         <span class="visually-hidden">Loading...</span>
                     </div>
-                    <p class="mt-2">Loading Venn diagram data...</p>
+                    <p class="mt-2">Loading Payer dashboard...</p>
                 </div>
                 
                 <!-- Charts Container -->
@@ -589,6 +617,16 @@
                             <h5 class="section-title" id="vennTitle">Conflict by Type</h5>
                             <div id="vennDiagram"></div>
                             <div id="vennTooltip" class="venn-tooltip"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- UpSet Chart Container -->
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <div class="upset-container" id="upsetContainer">
+                            <h5 class="section-title">Set Intersection Analysis</h5>
+                            <div id="upsetChart"></div>
                         </div>
                     </div>
                 </div>
@@ -734,6 +772,12 @@
             if (doughnutContainer) {
                 doughnutContainer.style.display = 'none';
             }
+            
+            // Hide UpSet chart during loading
+            const upsetContainer = document.getElementById('upsetContainer');
+            if (upsetContainer) {
+                upsetContainer.style.display = 'none';
+            }
         }
         
         function hideLoading() {
@@ -744,6 +788,12 @@
             const doughnutContainer = document.getElementById('doughnutContainer');
             if (doughnutContainer) {
                 doughnutContainer.style.display = 'block';
+            }
+            
+            // Show UpSet chart container
+            const upsetContainer = document.getElementById('upsetContainer');
+            if (upsetContainer) {
+                upsetContainer.style.display = 'block';
             }
         }
         
@@ -1084,6 +1134,332 @@
             });
         }
         
+        let upsetChart = null;
+        
+        function createUpSetChart(data) {
+            console.log('createUpSetChart called with data:', data);
+            
+            // Get container
+            const chartContainer = document.getElementById('upsetChart');
+            if (!chartContainer) {
+                console.error('UpSet chart container not found');
+                return;
+            }
+
+            // Clear existing content
+            chartContainer.innerHTML = '';
+
+            try {
+                // Process venn data to create UpSet format
+                const vennData = data.vennData || [];
+                console.log('Venn data for UpSet:', vennData);
+                
+                // Check if we have any data
+                if (vennData.length === 0) {
+                    console.log('No venn data available');
+                    chartContainer.innerHTML = '<div class="text-center text-muted mt-5"><h4>No data available</h4></div>';
+                    return;
+                }
+                
+                // Create UpSet data structure from Venn data
+                const upsetData = [];
+                let hasValidData = false;
+                
+                vennData.forEach(item => {
+                    const sets = Array.isArray(item.sets) ? item.sets : [item.sets];
+                    const size = item.size || 0;
+                    
+                    console.log('Processing venn item:', { sets, size, item });
+                    
+                    if (size > 0) {
+                        hasValidData = true;
+                        upsetData.push({
+                            name: sets.length === 1 ? sets[0] : sets.join(' ∩ '),
+                            sets: sets,
+                            cardinality: size,
+                            setCount: sets.length
+                        });
+                    }
+                });
+
+                console.log('UpSet data processed:', upsetData);
+                console.log('Has valid data:', hasValidData);
+
+                if (!hasValidData) {
+                    chartContainer.innerHTML = '<div class="text-center text-muted mt-5"><h4>No data available</h4></div>';
+                    return;
+                }
+
+                // Create custom UpSet-style visualization using D3
+                createCustomUpSetChart(chartContainer, upsetData);
+
+            } catch (error) {
+                console.error('Error creating UpSet chart:', error);
+                createUpSetFallback(chartContainer, upsetData || []);
+            }
+        }
+        
+        function createCustomUpSetChart(container, data) {
+            // Sort data by set count (intersections first) and then by cardinality
+            const sortedData = data.sort((a, b) => {
+                if (a.setCount !== b.setCount) {
+                    return b.setCount - a.setCount; // More sets first (intersections)
+                }
+                return b.cardinality - a.cardinality; // Higher cardinality first
+            });
+            
+            console.log('Sorted UpSet data:', sortedData);
+            
+            // Ensure minimum dimensions
+            const containerWidth = Math.max(container.clientWidth || 800, 700);
+            const containerHeight = Math.max(container.clientHeight || 500, 400);
+            const margin = { top: 40, right: 40, bottom: 140, left: 120 }; // Increased bottom margin for matrix
+            const chartWidth = Math.max(containerWidth - margin.left - margin.right, 200);
+            const chartHeight = Math.max(containerHeight - margin.top - margin.bottom, 150);
+            
+            // Matrix dimensions
+            const matrixHeight = 80;
+            const matrixTop = chartHeight + 40;
+            
+            console.log('Container dimensions:', { containerWidth, containerHeight, chartWidth, chartHeight });
+            
+            // Create SVG
+            const svg = d3.select(container)
+                .append('svg')
+                .attr('width', containerWidth)
+                .attr('height', containerHeight);
+                
+            const g = svg.append('g')
+                .attr('transform', `translate(${margin.left}, ${margin.top})`);
+            
+            // Scales
+            const xScale = d3.scaleBand()
+                .domain(sortedData.map(d => d.name))
+                .range([0, chartWidth])
+                .padding(0.2);
+                
+            const yScale = d3.scaleLinear()
+                .domain([0, d3.max(sortedData, d => d.cardinality)])
+                .range([chartHeight, 0]);
+            
+            // Colors for different set counts
+            const colorScale = d3.scaleOrdinal()
+                .domain([1, 2, 3])
+                .range(['#87CEEB', '#98FB98', '#FFB6C1']); // Single, double, triple intersections
+            
+            // Create bars
+            g.selectAll('.bar')
+                .data(sortedData)
+                .enter()
+                .append('rect')
+                .attr('class', 'bar')
+                .attr('x', d => xScale(d.name))
+                .attr('y', d => yScale(d.cardinality))
+                .attr('width', xScale.bandwidth())
+                .attr('height', d => Math.max(0, chartHeight - yScale(d.cardinality))) // Ensure non-negative height
+                .attr('fill', d => colorScale(d.setCount))
+                .attr('opacity', 0.8)
+                .on('mouseover', function(d) {
+                    d3.select(this).attr('opacity', 1);
+                    
+                    // Show tooltip
+                    const tooltip = d3.select('body').append('div')
+                        .attr('class', 'upset-tooltip')
+                        .style('position', 'absolute')
+                        .style('background', 'rgba(0,0,0,0.8)')
+                        .style('color', 'white')
+                        .style('padding', '8px')
+                        .style('border-radius', '4px')
+                        .style('font-size', '12px')
+                        .style('pointer-events', 'none')
+                        .style('z-index', '1000')
+                        .html(`<strong>${d.name}</strong><br/>Count: ${d.cardinality.toLocaleString()}<br/>Sets: ${d.sets.join(', ')}`);
+                    
+                    tooltip.style('left', (d3.event.pageX + 10) + 'px')
+                        .style('top', (d3.event.pageY - 10) + 'px');
+                })
+                .on('mouseout', function(d) {
+                    d3.select(this).attr('opacity', 0.8);
+                    d3.selectAll('.upset-tooltip').remove();
+                });
+            
+            // Add value labels on bars
+            g.selectAll('.bar-label')
+                .data(sortedData)
+                .enter()
+                .append('text')
+                .attr('class', 'bar-label')
+                .attr('x', d => xScale(d.name) + xScale.bandwidth() / 2)
+                .attr('y', d => yScale(d.cardinality) - 5)
+                .attr('text-anchor', 'middle')
+                .attr('font-size', '11px')
+                .attr('font-weight', 'bold')
+                .attr('fill', '#333')
+                .text(d => d.cardinality.toLocaleString());
+            
+            // X-axis
+            g.append('g')
+                .attr('transform', `translate(0, ${chartHeight})`)
+                .call(d3.axisBottom(xScale))
+                .selectAll('text')
+                .attr('transform', 'rotate(-45)')
+                .style('text-anchor', 'end')
+                .style('font-size', '10px');
+            
+            // Y-axis
+            g.append('g')
+                .call(d3.axisLeft(yScale).tickFormat(d3.format(',.0f')))
+                .selectAll('text')
+                .style('font-size', '10px');
+            
+            // Y-axis label
+            g.append('text')
+                .attr('transform', 'rotate(-90)')
+                .attr('y', 0 - margin.left + 30)
+                .attr('x', 0 - (chartHeight / 2))
+                .attr('dy', '1em')
+                .style('text-anchor', 'middle')
+                .style('font-size', '12px')
+                .style('font-weight', 'bold')
+                .text('Count');
+            
+            // Title removed to avoid duplication with container title
+            
+            // Legend
+            const legend = svg.append('g')
+                .attr('transform', `translate(${containerWidth - 150}, 40)`);
+            
+            const legendData = [
+                { label: 'Single Set', color: colorScale(1) },
+                { label: 'Two Sets', color: colorScale(2) },
+                { label: 'Three Sets', color: colorScale(3) }
+            ];
+            
+            legendData.forEach((item, i) => {
+                const legendRow = legend.append('g')
+                    .attr('transform', `translate(0, ${i * 20})`);
+                
+                legendRow.append('rect')
+                    .attr('width', 12)
+                    .attr('height', 12)
+                    .attr('fill', item.color)
+                    .attr('opacity', 0.8);
+                
+                legendRow.append('text')
+                    .attr('x', 18)
+                    .attr('y', 9)
+                    .style('font-size', '11px')
+                    .text(item.label);
+            });
+            
+            // Create intersection matrix
+            const matrixGroup = g.append('g')
+                .attr('transform', `translate(0, ${matrixTop})`);
+            
+            // Define all possible sets
+            const allSets = ['Time Overlap', 'Time Distance', 'In Service'];
+            const dotRadius = 4;
+            const lineWidth = 2;
+            
+            // Create matrix grid
+            const matrixYScale = d3.scaleBand()
+                .domain(allSets)
+                .range([0, matrixHeight])
+                .padding(0.2);
+            
+            // Add set labels on the left
+            allSets.forEach((setName, i) => {
+                matrixGroup.append('text')
+                    .attr('x', -10)
+                    .attr('y', matrixYScale(setName) + matrixYScale.bandwidth() / 2)
+                    .attr('text-anchor', 'end')
+                    .attr('dominant-baseline', 'middle')
+                    .style('font-size', '11px')
+                    .style('font-weight', 'bold')
+                    .text(setName);
+            });
+            
+            // Create intersection visualization for each data point
+            sortedData.forEach((d, i) => {
+                const xPos = xScale(d.name) + xScale.bandwidth() / 2;
+                
+                // Create dots for each set involved in this intersection
+                const involvedSets = d.sets;
+                const connectedDots = [];
+                
+                allSets.forEach(setName => {
+                    const yPos = matrixYScale(setName) + matrixYScale.bandwidth() / 2;
+                    const isInvolved = involvedSets.includes(setName);
+                    
+                    if (isInvolved) {
+                        connectedDots.push({ x: xPos, y: yPos });
+                    }
+                    
+                    // Draw dot
+                    matrixGroup.append('circle')
+                        .attr('cx', xPos)
+                        .attr('cy', yPos)
+                        .attr('r', dotRadius)
+                        .attr('fill', isInvolved ? colorScale(d.setCount) : '#e0e0e0')
+                        .attr('stroke', isInvolved ? '#333' : '#ccc')
+                        .attr('stroke-width', isInvolved ? 1.5 : 0.5)
+                        .attr('opacity', isInvolved ? 1 : 0.3);
+                });
+                
+                // Draw connecting lines between involved sets
+                if (connectedDots.length > 1) {
+                    // Sort dots by y position for consistent line drawing
+                    connectedDots.sort((a, b) => a.y - b.y);
+                    
+                    // Draw vertical line connecting all involved dots
+                    const minY = connectedDots[0].y;
+                    const maxY = connectedDots[connectedDots.length - 1].y;
+                    
+                    matrixGroup.append('line')
+                        .attr('x1', xPos)
+                        .attr('y1', minY)
+                        .attr('x2', xPos)
+                        .attr('y2', maxY)
+                        .attr('stroke', colorScale(d.setCount))
+                        .attr('stroke-width', lineWidth)
+                        .attr('opacity', 0.8);
+                }
+            });
+            
+            // Add matrix title
+            matrixGroup.append('text')
+                .attr('x', chartWidth / 2)
+                .attr('y', -10)
+                .attr('text-anchor', 'middle')
+                .style('font-size', '12px')
+                .style('font-weight', 'bold')
+                .text('Set Intersections');
+        }
+        
+        function createUpSetFallback(container, data) {
+            let html = '<div class="text-center mb-4"><h4></h4></div>';
+            html += '<div class="table-responsive"><table class="table table-striped">';
+            html += '<thead><tr><th>Intersection</th><th>Count</th><th>Sets</th></tr></thead><tbody>';
+            
+            if (data.length === 0) {
+                html += '<tr><td colspan="3" class="text-center text-muted">No data available</td></tr>';
+            } else {
+                data.forEach(item => {
+                    const setsText = item.sets ? item.sets.join(', ') : item.name;
+                    const countText = item.cardinality ? item.cardinality.toLocaleString() : 0;
+                    
+                    html += `<tr>
+                        <td><strong>${item.name}</strong></td>
+                        <td>${countText}</td>
+                        <td><small class="text-muted">${setsText}</small></td>
+                    </tr>`;
+                });
+            }
+            
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
+        }
+        
         function updateKPICards(data) {
             console.log('updateKPICards called with data:', data);
             
@@ -1228,6 +1604,7 @@
                 if (data.success) {
                     createVennDiagram(data.data);
                     createDoughnutChart(data.data); // Create doughnut chart instead of table
+                    createUpSetChart(data.data); // Create UpSet chart with the same data
                     updateKPICards(data.data); // Update KPI cards with the same data
                     showMessage(data.message);
                     updateVennTitle(); // Update title after successful data loading

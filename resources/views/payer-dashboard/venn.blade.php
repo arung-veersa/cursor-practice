@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>New Payer Dashboard - Venn Diagram</title>
+    <title>Payer Dashboard - New Calculations</title>
     <meta name="csrf-token" content="{{ csrf_token() }}">
     
     <!-- Bootstrap CSS -->
@@ -18,6 +18,9 @@
     
     <!-- D3.js for SVG manipulation -->
     <script src="https://d3js.org/d3.v5.min.js"></script>
+    
+    <!-- Chart.js for doughnut chart -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
     <style>
         .filter-section {
@@ -37,6 +40,30 @@
             padding: 20px;
             overflow: hidden;
             z-index: 1;
+        }
+        
+        .doughnut-container {
+            position: relative;
+            height: 600px;
+            margin-bottom: 20px;
+            background-color: #ffffff;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .doughnut-container #doughnutChart {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        
+        .doughnut-container canvas {
+            max-height: 500px !important;
         }
         
         .venn-container #vennDiagram {
@@ -218,6 +245,167 @@
         .select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__choice__remove:hover {
             color: #f8f9fa;
         }
+        
+        /* Payer select container fixes */
+        .payer-select-container {
+            position: relative;
+        }
+        
+        .select2-container--bootstrap-5 .select2-selection--multiple {
+            min-height: 31px !important;
+            max-height: 31px !important;
+            height: 31px !important;
+            overflow: hidden;
+        }
+        
+        .select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__rendered {
+            height: 25px !important;
+            max-height: 25px !important;
+            overflow: hidden;
+            padding: 4px 8px;
+            display: block;
+            line-height: 1.4;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+        
+        .select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__choice {
+            display: none; /* Hide individual choice pills when using custom display */
+        }
+        
+        .select2-container--bootstrap-5 .select2-selection--multiple .select2-search--inline {
+            display: none; /* Hide search input to maintain fixed height */
+        }
+        
+        .select2-container--bootstrap-5 .select2-selection--multiple .select2-search--inline .select2-search__field {
+            display: none;
+        }
+        
+        /* Payer dropdown with checkboxes */
+        .select2-container--bootstrap-5 .select2-results__option {
+            padding: 6px 12px;
+            cursor: pointer;
+        }
+        
+        .select2-container--bootstrap-5 .select2-results__option:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .payer-custom-display {
+            color: #495057;
+            font-size: 13px;
+            line-height: 1.4;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        /* KPI Section Styles */
+        .kpi-section {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .kpi-card {
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            border: 1px solid #e9ecef;
+            border-radius: 12px;
+            padding: 20px;
+            height: 120px;
+            display: flex;
+            align-items: center;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .kpi-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border-color: #0d6efd;
+        }
+        
+        .kpi-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #0d6efd, #6610f2, #6f42c1);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .kpi-card:hover::before {
+            opacity: 1;
+        }
+        
+        .kpi-icon {
+            font-size: 24px;
+            color: #0d6efd;
+            margin-right: 15px;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(13, 110, 253, 0.1);
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        
+        .kpi-content {
+            flex: 1;
+        }
+        
+        .kpi-value {
+            font-size: 22px;
+            font-weight: 700;
+            color: #212529;
+            line-height: 1;
+            margin-bottom: 5px;
+            transition: all 0.3s ease;
+        }
+        
+        .kpi-label {
+            font-size: 12px;
+            color: #6c757d;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            line-height: 1.2;
+        }
+        
+        /* Responsive adjustments for KPI cards */
+        @media (max-width: 768px) {
+            .kpi-card {
+                height: 100px;
+                padding: 15px;
+            }
+            
+            .kpi-value {
+                font-size: 20px;
+            }
+            
+            .kpi-icon {
+                font-size: 20px;
+                width: 35px;
+                height: 35px;
+                margin-right: 12px;
+            }
+        }
+        
+        /* Individual KPI card color variations */
+        .kpi-card:nth-child(1) .kpi-icon { color: #0d6efd; background: rgba(13, 110, 253, 0.1); }
+        .kpi-card:nth-child(2) .kpi-icon { color: #198754; background: rgba(25, 135, 84, 0.1); }
+        .kpi-card:nth-child(3) .kpi-icon { color: #fd7e14; background: rgba(253, 126, 20, 0.1); }
+        .kpi-card:nth-child(4) .kpi-icon { color: #6610f2; background: rgba(102, 16, 242, 0.1); }
+        .kpi-card:nth-child(5) .kpi-icon { color: #dc3545; background: rgba(220, 53, 69, 0.1); }
     </style>
 </head>
 <body>
@@ -225,7 +413,7 @@
         <div class="row">
             <div class="col-12">
                 <div class="d-flex justify-content-between align-items-center mb-4">
-                    <h4 class="my-2">New Payer Dashboard - Venn Diagram</h4>
+                    <h4 class="my-2">Payer Dashboard - New Calculations</h4>
                     <div>
                         <a href="{{ route('payer.dashboard.index') }}" class="nav-link">
                             <i class="fas fa-chart-pie"></i> Original Dashboard
@@ -243,27 +431,50 @@
                 <!-- Filter Section -->
                 <div class="filter-section">
                     <form id="filterForm">
-                        <div class="row">
-                            <div class="col-md-2">
-                                <label for="metricToShow" class="form-label">Metric to Show</label>
+                        <div class="row align-items-end g-2">
+                            <div class="col-lg col-md-2 col-sm-6">
+                                <label for="metricToShow" class="form-label">Metric</label>
                                 <select class="form-select form-select-sm" id="metricToShow" name="metricToShow">
-                                    <option value="CO_TO" selected>Conflict Count</option>
-                                    <option value="CO_OP">Conflict $ Impact</option>
-                                    <option value="CO_FP">Final $ Impact</option>
+                                    <option value="CO_TO" selected>Count</option>
+                                    <option value="CO_OP">$ Impact</option>
+                                    <option value="CO_FP">Final $</option>
                                 </select>
                             </div>
                             
-                            <div class="col-md-2">
+                            <div class="col-lg-2 col-md-3 col-sm-6">
+                                <label for="payerId" class="form-label">Payer</label>
+                                <div class="payer-select-container">
+                                    <select class="form-select form-select-sm" id="payerId" name="payerId[]" multiple>
+                                        @if(isset($payerOptions))
+                                            @foreach($payerOptions as $payer)
+                                                <option value="{{ $payer['id'] }}">{{ $payer['name'] }}</option>
+                                            @endforeach
+                                        @endif
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="col-lg col-md-2 col-sm-6">
                                 <label for="dateFrom" class="form-label">Date From</label>
                                 <input type="date" class="form-control form-control-sm" id="dateFrom" name="dateFrom">
                             </div>
                             
-                            <div class="col-md-2">
+                            <div class="col-lg col-md-2 col-sm-6">
                                 <label for="dateTo" class="form-label">Date To</label>
                                 <input type="date" class="form-control form-control-sm" id="dateTo" name="dateTo">
                             </div>
                             
-                            <div class="col-md-2">
+                            <div class="col-lg col-md-2 col-sm-6">
+                                <label for="statusFlag" class="form-label">Status</label>
+                                <select class="form-select form-select-sm" id="statusFlag" name="statusFlag">
+                                    <option value="">All</option>
+                                    <option value="U">Unresolved</option>
+                                    <option value="R">Resolved</option>
+                                    <option value="D">Deleted</option>
+                                </select>
+                            </div>
+                            
+                            <div class="col-lg col-md-3 col-sm-6">
                                 <label for="costType" class="form-label">Cost Type</label>
                                 <select class="form-select form-select-sm" id="costType" name="costType">
                                     <option value="">All Cost Types</option>
@@ -275,7 +486,7 @@
                                 </select>
                             </div>
                             
-                            <div class="col-md-2">
+                            <div class="col-lg col-md-3 col-sm-6">
                                 <label for="visitType" class="form-label">Visit Type</label>
                                 <select class="form-select form-select-sm" id="visitType" name="visitType">
                                     <option value="">All Visit Types</option>
@@ -287,31 +498,8 @@
                                 </select>
                             </div>
                             
-                            <div class="col-md-2">
-                                <label for="statusFlag" class="form-label">Status Flag</label>
-                                <select class="form-select form-select-sm" id="statusFlag" name="statusFlag">
-                                    <option value="">All Status Flags</option>
-                                    @if(isset($filterOptions['statusFlags']))
-                                        @foreach($filterOptions['statusFlags'] as $statusFlag)
-                                            <option value="{{ $statusFlag }}">{{ $statusFlag }}</option>
-                                        @endforeach
-                                    @endif
-                                </select>
-                            </div>
-                            
-                            <div class="col-md-2">
-                                <label for="payerId" class="form-label">Payer</label>
-                                <select class="form-select form-select-sm" id="payerId" name="payerId[]" multiple>
-                                    @if(isset($payerOptions))
-                                        @foreach($payerOptions as $payer)
-                                            <option value="{{ $payer['id'] }}">{{ $payer['name'] }}</option>
-                                        @endforeach
-                                    @endif
-                                </select>
-                            </div>
-                            
-                            <div class="col-md-2 d-flex align-items-end">
-                                <button type="submit" class="btn btn-primary btn-sm" aria-label="Apply Filters">
+                            <div class="col-lg col-md-2 col-sm-6">
+                                <button type="submit" class="btn btn-primary btn-sm w-100" aria-label="Apply Filters">
                                     <i class="fas fa-search"></i>
                                 </button>
                             </div>
@@ -319,7 +507,66 @@
                     </form>
                 </div>
                 
-                
+                <!-- KPI Section -->
+                <div class="kpi-section" id="kpiSection" style="display: none;">
+                    <div class="row">
+                        <div class="col-lg col-md-6 col-sm-6 mb-3">
+                            <div class="kpi-card">
+                                <div class="kpi-icon">
+                                    <i class="fas fa-database"></i>
+                                </div>
+                                <div class="kpi-content">
+                                    <div class="kpi-value" id="kpiRecordCount">-</div>
+                                    <div class="kpi-label">Record Count</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg col-md-6 col-sm-6 mb-3">
+                            <div class="kpi-card">
+                                <div class="kpi-icon">
+                                    <i class="fas fa-clock"></i>
+                                </div>
+                                <div class="kpi-content">
+                                    <div class="kpi-value" id="kpiTimeOverlap">-</div>
+                                    <div class="kpi-label">Time Overlap</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg col-md-6 col-sm-6 mb-3">
+                            <div class="kpi-card">
+                                <div class="kpi-icon">
+                                    <i class="fas fa-route"></i>
+                                </div>
+                                <div class="kpi-content">
+                                    <div class="kpi-value" id="kpiTimeDistance">-</div>
+                                    <div class="kpi-label">Time Distance</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg col-md-6 col-sm-6 mb-3">
+                            <div class="kpi-card">
+                                <div class="kpi-icon">
+                                    <i class="fas fa-tools"></i>
+                                </div>
+                                <div class="kpi-content">
+                                    <div class="kpi-value" id="kpiInService">-</div>
+                                    <div class="kpi-label">In Service</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg col-md-6 col-sm-6 mb-3">
+                            <div class="kpi-card">
+                                <div class="kpi-icon">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                </div>
+                                <div class="kpi-content">
+                                    <div class="kpi-value" id="kpiTotalConflicts">-</div>
+                                    <div class="kpi-label">Total Conflicts</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
                 <!-- Loading Spinner -->
                 <div id="loadingSpinner" class="loading-spinner">
@@ -329,31 +576,19 @@
                     <p class="mt-2">Loading Venn diagram data...</p>
                 </div>
                 
-                <!-- Venn Diagram Container -->
+                <!-- Charts Container -->
                 <div class="row">
+                    <div class="col-md-6">
+                        <div class="doughnut-container" id="doughnutContainer">
+                            <h5 class="section-title">Distribution Overview</h5>
+                            <div id="doughnutChart"></div>
+                        </div>
+                    </div>
                     <div class="col-md-6">
                         <div class="venn-container" id="vennContainer">
                             <h5 class="section-title" id="vennTitle">Conflict by Type</h5>
                             <div id="vennDiagram"></div>
                             <div id="vennTooltip" class="venn-tooltip"></div>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="venn-data-container">
-                            <h5 class="section-title">Underlying Data</h5>
-                            <div id="vennDataTable" class="table-responsive">
-                                <table class="table table-sm table-striped">
-                                    <colgroup>
-                                        <col style="width: 60%">
-                                        <col style="width: 40%">
-                                    </colgroup>
-                                    <tbody id="vennDataTableBody">
-                                        <tr>
-                                            <td colspan="2" class="text-center text-muted">No data loaded. Please apply filters to view data.</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -403,31 +638,113 @@
         // Initialize title with default
         vennTitle.textContent = 'Conflict by Type';
         
-        // Initialize Select2 for payer dropdown
+        // Initialize Select2 for payer dropdown with checkboxes
         $(document).ready(function() {
             $('#payerId').select2({
                 theme: 'bootstrap-5',
                 placeholder: 'All Payers',
                 allowClear: true,
-                width: '100%'
+                width: '100%',
+                closeOnSelect: false,
+                templateResult: formatPayerOption,
+                templateSelection: formatPayerSelection,
+                dropdownParent: $('.payer-select-container')
             });
+            
+            // Update display when selection changes
+            $('#payerId').on('select2:select select2:unselect', function() {
+                updatePayerDisplay();
+            });
+            
+            // Initialize display
+            setTimeout(() => {
+                updatePayerDisplay();
+            }, 100);
         });
+        
+        // Format payer options with checkboxes
+        function formatPayerOption(option) {
+            if (!option.id) {
+                return option.text;
+            }
+            
+            const isSelected = $('#payerId').val() && $('#payerId').val().includes(option.id);
+            const checkbox = isSelected ? '☑' : '☐';
+            
+            return $(`<span>${checkbox} ${option.text}</span>`);
+        }
+        
+        // Format payer selection display
+        function formatPayerSelection(option) {
+            const selectedValues = $('#payerId').val() || [];
+            
+            if (selectedValues.length === 0) {
+                return 'All Payers';
+            } else if (selectedValues.length === 1) {
+                return option.text || $('#payerId option[value="' + selectedValues[0] + '"]').text();
+            } else {
+                return 'Multiple Payers';
+            }
+        }
+        
+        // Update payer display
+        function updatePayerDisplay() {
+            const selectedValues = $('#payerId').val() || [];
+            const container = $('#payerId').next('.select2-container').find('.select2-selection__rendered');
+            
+            let displayText = '';
+            if (selectedValues.length === 0) {
+                displayText = 'All Payers';
+            } else if (selectedValues.length === 1) {
+                displayText = $('#payerId option[value="' + selectedValues[0] + '"]').text();
+            } else {
+                displayText = 'Multiple Payers (' + selectedValues.length + ')';
+            }
+            
+            // Clear existing content and set new text
+            container.empty().text(displayText);
+            container.attr('title', displayText); // Add tooltip for truncated text
+            
+            // Update checkboxes in dropdown when it's open
+            setTimeout(() => {
+                $('.select2-results__option').each(function() {
+                    const optionValue = $(this).data('data') ? $(this).data('data').id : null;
+                    if (optionValue) {
+                        const isSelected = selectedValues.includes(optionValue);
+                        const checkbox = isSelected ? '☑' : '☐';
+                        const text = $(this).text().replace(/^[☑☐]\s/, '');
+                        $(this).html(`${checkbox} ${text}`);
+                    }
+                });
+            }, 50);
+        }
         
         function showLoading() {
             loadingSpinner.style.display = 'block';
             vennContainer.style.display = 'none';
             
+            // Hide KPI section during loading
+            const kpiSection = document.getElementById('kpiSection');
+            if (kpiSection) {
+                kpiSection.style.display = 'none';
+            }
             
-            // Show loading in data table
-            const tableBody = document.getElementById('vennDataTableBody');
-            if (tableBody) {
-                tableBody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">Loading data...</td></tr>';
+            // Hide doughnut chart during loading
+            const doughnutContainer = document.getElementById('doughnutContainer');
+            if (doughnutContainer) {
+                doughnutContainer.style.display = 'none';
             }
         }
         
         function hideLoading() {
             loadingSpinner.style.display = 'none';
             vennContainer.style.display = 'block';
+            
+            // Show doughnut chart container
+            const doughnutContainer = document.getElementById('doughnutContainer');
+            if (doughnutContainer) {
+                doughnutContainer.style.display = 'block';
+            }
         }
         
         function showMessage(message, type = 'success') {
@@ -668,14 +985,107 @@
             }
         }
         
-        function updateVennDataTable(data) {
-            console.log('updateVennDataTable called with data:', data);
-            const tableBody = document.getElementById('vennDataTableBody');
+        let doughnutChart = null;
+        
+        function createDoughnutChart(data) {
+            console.log('createDoughnutChart called with data:', data);
             
-            if (!tableBody) {
-                console.error('Table body not found');
+            // Extract data with proper fallbacks
+            const timeOverlap = (data.sets && data.sets[0] && data.sets[0].size) ? data.sets[0].size : 0;
+            const timeDistance = (data.sets && data.sets[1] && data.sets[1].size) ? data.sets[1].size : 0;
+            const inService = (data.sets && data.sets[2] && data.sets[2].size) ? data.sets[2].size : 0;
+
+            console.log('Doughnut chart values:', { timeOverlap, timeDistance, inService });
+
+            // Get or create canvas
+            const chartContainer = document.getElementById('doughnutChart');
+            if (!chartContainer) {
+                console.error('Doughnut chart container not found');
                 return;
             }
+
+            // Clear existing content
+            chartContainer.innerHTML = '';
+
+            // Check if all values are zero
+            if (timeOverlap === 0 && timeDistance === 0 && inService === 0) {
+                chartContainer.innerHTML = '<div class="text-center text-muted mt-5"><h4>No data available</h4></div>';
+                return;
+            }
+
+            // Create canvas
+            const canvas = document.createElement('canvas');
+            canvas.id = 'doughnutChartCanvas';
+            chartContainer.appendChild(canvas);
+
+            // Destroy existing chart if it exists
+            if (doughnutChart) {
+                doughnutChart.destroy();
+            }
+
+            // Create new chart
+            const ctx = canvas.getContext('2d');
+            doughnutChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Time Overlap', 'Time Distance', 'In Service'],
+                    datasets: [{
+                        data: [timeOverlap, timeDistance, inService],
+                        backgroundColor: [
+                            '#FFB6C1', // Light pink for Time Overlap
+                            '#98FB98', // Light green for Time Distance  
+                            '#87CEEB'  // Light blue for In Service
+                        ],
+                        borderColor: [
+                            '#FF69B4', // Darker pink
+                            '#32CD32', // Darker green
+                            '#4682B4'  // Darker blue
+                        ],
+                        borderWidth: 2,
+                        hoverBackgroundColor: [
+                            '#FF91A4',
+                            '#7FDD7F',
+                            '#6BB6D6'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                padding: 20,
+                                usePointStyle: true,
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                    return `${label}: ${value.toLocaleString()} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    },
+                    cutout: '60%',
+                    animation: {
+                        animateScale: true,
+                        animateRotate: true
+                    }
+                }
+            });
+        }
+        
+        function updateKPICards(data) {
+            console.log('updateKPICards called with data:', data);
             
             // Extract data with proper fallbacks
             const recordCount = data.record_count || 0;
@@ -684,26 +1094,44 @@
             const inService = (data.sets && data.sets[2] && data.sets[2].size) ? data.sets[2].size : 0;
             const totalConflicts = data.total_conflicts || 0;
 
-            console.log('Extracted values:', { recordCount, timeOverlap, timeDistance, inService, totalConflicts });
+            console.log('KPI values:', { recordCount, timeOverlap, timeDistance, inService, totalConflicts });
 
-            const rows = [
-                { label: 'Record Count', value: recordCount },
-                { label: 'Time Overlap', value: timeOverlap },
-                { label: 'Time Distance', value: timeDistance },
-                { label: 'In Service', value: inService },
-                { label: 'Total', value: totalConflicts }
+            // Update KPI card values with animation
+            const kpiElements = [
+                { id: 'kpiRecordCount', value: recordCount },
+                { id: 'kpiTimeOverlap', value: timeOverlap },
+                { id: 'kpiTimeDistance', value: timeDistance },
+                { id: 'kpiInService', value: inService },
+                { id: 'kpiTotalConflicts', value: totalConflicts }
             ];
 
-            let html = '';
-            rows.forEach(r => {
-                html += `<tr>
-                    <td style="color: #000000 !important; font-weight: bold !important; font-size: 14px !important; padding: 12px 14px !important;">${r.label}</td>
-                    <td><span class="badge bg-secondary">${Number(r.value).toLocaleString()}</span></td>
-                </tr>`;
+            kpiElements.forEach(kpi => {
+                const element = document.getElementById(kpi.id);
+                if (element) {
+                    // Add animation effect
+                    element.style.transform = 'scale(0.8)';
+                    element.style.opacity = '0.5';
+                    
+                    setTimeout(() => {
+                        element.textContent = Number(kpi.value).toLocaleString();
+                        element.style.transform = 'scale(1)';
+                        element.style.opacity = '1';
+                    }, 150);
+                }
             });
 
-            console.log('Generated HTML:', html);
-            tableBody.innerHTML = html;
+            // Show the KPI section after data is loaded
+            const kpiSection = document.getElementById('kpiSection');
+            if (kpiSection) {
+                kpiSection.style.display = 'block';
+                
+                // Add fade-in animation
+                kpiSection.style.opacity = '0';
+                setTimeout(() => {
+                    kpiSection.style.transition = 'opacity 0.5s ease-in-out';
+                    kpiSection.style.opacity = '1';
+                }, 100);
+            }
         }
         
         function createFallbackVisualization(container, data) {
@@ -799,7 +1227,8 @@
                 
                 if (data.success) {
                     createVennDiagram(data.data);
-                    updateVennDataTable(data.data);
+                    createDoughnutChart(data.data); // Create doughnut chart instead of table
+                    updateKPICards(data.data); // Update KPI cards with the same data
                     showMessage(data.message);
                     updateVennTitle(); // Update title after successful data loading
                 } else {

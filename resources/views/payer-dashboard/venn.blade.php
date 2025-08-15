@@ -434,6 +434,50 @@
         .kpi-card:nth-child(3) .kpi-icon { color: #fd7e14; background: rgba(253, 126, 20, 0.1); }
         .kpi-card:nth-child(4) .kpi-icon { color: #6610f2; background: rgba(102, 16, 242, 0.1); }
         .kpi-card:nth-child(5) .kpi-icon { color: #dc3545; background: rgba(220, 53, 69, 0.1); }
+        
+        /* Custom date input styles */
+        .date-input-wrapper {
+            position: relative;
+        }
+        
+        .date-display {
+            font-family: monospace;
+            letter-spacing: 0.5px;
+            background-color: #fff;
+            padding-right: 30px;
+        }
+        
+        .date-display:focus {
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+        }
+        
+        .date-display::placeholder {
+            color: #6c757d;
+            font-style: italic;
+        }
+        
+        .date-input-wrapper::after {
+            content: '\f073';
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #6c757d;
+            pointer-events: none;
+            font-size: 12px;
+            z-index: 10;
+        }
+        
+        .date-picker {
+            z-index: 5;
+        }
+        
+        .date-display:hover {
+            border-color: #0d6efd;
+        }
     </style>
 </head>
 <body>
@@ -484,12 +528,18 @@
                             
                             <div class="col-lg col-md-2 col-sm-6">
                                 <label for="dateFrom" class="form-label">Date From</label>
-                                <input type="date" class="form-control form-control-sm" id="dateFrom" name="dateFrom">
+                                <div class="date-input-wrapper">
+                                    <input type="date" class="form-control form-control-sm date-picker" id="dateFrom" name="dateFrom" style="position: absolute; opacity: 0; width: 100%; height: 100%; cursor: pointer;">
+                                    <input type="text" class="form-control form-control-sm date-display" id="dateFromDisplay" placeholder="mm/dd/yyyy" readonly style="pointer-events: none;">
+                                </div>
                             </div>
                             
                             <div class="col-lg col-md-2 col-sm-6">
                                 <label for="dateTo" class="form-label">Date To</label>
-                                <input type="date" class="form-control form-control-sm" id="dateTo" name="dateTo">
+                                <div class="date-input-wrapper">
+                                    <input type="date" class="form-control form-control-sm date-picker" id="dateTo" name="dateTo" style="position: absolute; opacity: 0; width: 100%; height: 100%; cursor: pointer;">
+                                    <input type="text" class="form-control form-control-sm date-display" id="dateToDisplay" placeholder="mm/dd/yyyy" readonly style="pointer-events: none;">
+                                </div>
                             </div>
                             
                             <div class="col-lg col-md-2 col-sm-6">
@@ -1283,28 +1333,42 @@
                     d3.selectAll('.upset-tooltip').remove();
                 });
             
-            // Add value labels on bars
+            // Add x-axis labels above bars (instead of traditional x-axis)
+            g.selectAll('.x-label')
+                .data(sortedData)
+                .enter()
+                .append('text')
+                .attr('class', 'x-label')
+                .attr('x', d => xScale(d.name) + xScale.bandwidth() / 2)
+                .attr('y', d => yScale(d.cardinality) - 25) // Position above the numeric values
+                .attr('text-anchor', 'middle')
+                .attr('font-size', '10px')
+                .attr('font-weight', 'normal')
+                .attr('fill', '#666')
+                .text(d => d.name);
+            
+            // Add numeric value labels above x-axis labels
             g.selectAll('.bar-label')
                 .data(sortedData)
                 .enter()
                 .append('text')
                 .attr('class', 'bar-label')
                 .attr('x', d => xScale(d.name) + xScale.bandwidth() / 2)
-                .attr('y', d => yScale(d.cardinality) - 5)
+                .attr('y', d => yScale(d.cardinality) - 10) // Position above bars but below x-axis labels
                 .attr('text-anchor', 'middle')
                 .attr('font-size', '11px')
                 .attr('font-weight', 'bold')
                 .attr('fill', '#333')
                 .text(d => d.cardinality.toLocaleString());
             
-            // X-axis
-            g.append('g')
-                .attr('transform', `translate(0, ${chartHeight})`)
-                .call(d3.axisBottom(xScale))
-                .selectAll('text')
-                .attr('transform', 'rotate(-45)')
-                .style('text-anchor', 'end')
-                .style('font-size', '10px');
+            // Remove traditional x-axis (commented out)
+            // g.append('g')
+            //     .attr('transform', `translate(0, ${chartHeight})`)
+            //     .call(d3.axisBottom(xScale))
+            //     .selectAll('text')
+            //     .attr('transform', 'rotate(-45)')
+            //     .style('text-anchor', 'end')
+            //     .style('font-size', '10px');
             
             // Y-axis
             g.append('g')
@@ -1427,13 +1491,13 @@
             });
             
             // Add matrix title
-            matrixGroup.append('text')
-                .attr('x', chartWidth / 2)
-                .attr('y', -10)
-                .attr('text-anchor', 'middle')
-                .style('font-size', '12px')
-                .style('font-weight', 'bold')
-                .text('Set Intersections');
+            // matrixGroup.append('text')
+            //     .attr('x', chartWidth / 2)
+            //     .attr('y', -10)
+            //     .attr('text-anchor', 'middle')
+            //     .style('font-size', '12px')
+            //     .style('font-weight', 'bold')
+            //     .text('Set Intersections');
         }
         
         function createUpSetFallback(container, data) {
@@ -1544,6 +1608,9 @@
             const formData = new FormData(filterForm);
             const filters = Object.fromEntries(formData.entries());
             
+            // Date formats are already in yyyy-mm-dd format from the hidden date picker
+            // No conversion needed
+            
             // Remove empty values
             Object.keys(filters).forEach(key => {
                 if (!filters[key]) {
@@ -1619,8 +1686,90 @@
             });
         });
         
+        // Setup hybrid date inputs with native picker and mm/dd/yyyy display
+        function formatDateInputs() {
+            // Setup dateFrom
+            setupDateInput('dateFrom', 'dateFromDisplay');
+            // Setup dateTo  
+            setupDateInput('dateTo', 'dateToDisplay');
+        }
+        
+        function setupDateInput(pickerId, displayId) {
+            const picker = document.getElementById(pickerId);
+            const display = document.getElementById(displayId);
+            
+            if (!picker || !display) return;
+            
+            // When date picker value changes, update the display field
+            picker.addEventListener('change', function() {
+                if (this.value) {
+                    // Convert yyyy-mm-dd to mm/dd/yyyy for display
+                    const date = new Date(this.value + 'T00:00:00');
+                    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+                    const day = date.getDate().toString().padStart(2, '0');
+                    const year = date.getFullYear();
+                    display.value = `${month}/${day}/${year}`;
+                } else {
+                    display.value = '';
+                }
+            });
+            
+            // Handle input event as well for better browser compatibility
+            picker.addEventListener('input', function() {
+                if (this.value) {
+                    // Convert yyyy-mm-dd to mm/dd/yyyy for display
+                    const date = new Date(this.value + 'T00:00:00');
+                    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+                    const day = date.getDate().toString().padStart(2, '0');
+                    const year = date.getFullYear();
+                    display.value = `${month}/${day}/${year}`;
+                } else {
+                    display.value = '';
+                }
+            });
+            
+            // Add keyboard support for clearing
+            picker.addEventListener('keydown', function(e) {
+                if (e.key === 'Backspace' || e.key === 'Delete') {
+                    // Allow default behavior, then update display
+                    setTimeout(() => {
+                        if (!this.value) {
+                            display.value = '';
+                        }
+                    }, 0);
+                }
+            });
+            
+            // Initialize display if picker has a value
+            if (picker.value) {
+                picker.dispatchEvent(new Event('change'));
+            }
+        }
+        
+        // Convert yyyy-mm-dd to mm/dd/yyyy for display
+        function formatDateForDisplay(dateString) {
+            if (!dateString) return '';
+            
+            const date = new Date(dateString + 'T00:00:00');
+            if (isNaN(date.getTime())) return '';
+            
+            const month = (date.getMonth() + 1).toString().padStart(2, '0');
+            const day = date.getDate().toString().padStart(2, '0');
+            const year = date.getFullYear();
+            
+            return `${month}/${day}/${year}`;
+        }
+        
+        // The date picker already provides yyyy-mm-dd format for backend
+        function formatDateForBackend(dateString) {
+            // Since we're using the native date picker, it already provides the correct format
+            return dateString;
+        }
+        
         // Load initial data
         document.addEventListener('DOMContentLoaded', function() {
+            // Initialize date input formatting
+            formatDateInputs();
             // filterForm.dispatchEvent(new Event('submit')); // Removed automatic data loading
         });
     </script>

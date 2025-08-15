@@ -1010,7 +1010,7 @@
                             .attr('font-weight', 'bold')
                             .attr('fill', 'black')
                             .style('background', 'none') // Remove any background
-                            .text(item.value.toLocaleString());
+                            .text(formatValue(item.value, metricToShow.value));
                     }
                 });
                 
@@ -1060,7 +1060,7 @@
                             .attr('font-weight', 'bold')
                             .attr('fill', 'black')
                             .style('background', 'none') // Remove any background
-                            .text(intersection.value.toLocaleString());
+                            .text(formatValue(intersection.value, metricToShow.value));
                     }
                 });
                 
@@ -1170,7 +1170,8 @@
                                     const value = context.parsed || 0;
                                     const total = context.dataset.data.reduce((a, b) => a + b, 0);
                                     const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
-                                    return `${label}: ${value.toLocaleString()} (${percentage}%)`;
+                                    const formattedValue = formatValue(value, metricToShow.value);
+                                    return `${label}: ${formattedValue} (${percentage}%)`;
                                 }
                             }
                         }
@@ -1323,7 +1324,7 @@
                         .style('font-size', '12px')
                         .style('pointer-events', 'none')
                         .style('z-index', '1000')
-                        .html(`<strong>${d.name}</strong><br/>Count: ${d.cardinality.toLocaleString()}<br/>Sets: ${d.sets.join(', ')}`);
+                        .html(`<strong>${d.name}</strong><br/>${getMetricDescription(metricToShow.value)}: ${formatValue(d.cardinality, metricToShow.value)}<br/>Sets: ${d.sets.join(', ')}`);
                     
                     tooltip.style('left', (d3.event.pageX + 10) + 'px')
                         .style('top', (d3.event.pageY - 10) + 'px');
@@ -1359,7 +1360,7 @@
                 .attr('font-size', '11px')
                 .attr('font-weight', 'bold')
                 .attr('fill', '#333')
-                .text(d => d.cardinality.toLocaleString());
+                .text(d => formatValue(d.cardinality, metricToShow.value));
             
             // Remove traditional x-axis (commented out)
             // g.append('g')
@@ -1385,7 +1386,7 @@
                 .style('text-anchor', 'middle')
                 .style('font-size', '12px')
                 .style('font-weight', 'bold')
-                .text('Count');
+                .text(getMetricDescription(metricToShow.value));
             
             // Title removed to avoid duplication with container title
             
@@ -1553,7 +1554,12 @@
                     element.style.opacity = '0.5';
                     
                     setTimeout(() => {
-                        element.textContent = Number(kpi.value).toLocaleString();
+                        // Record Count KPI should always be a number, others use metric-based formatting
+                        if (kpi.id === 'kpiRecordCount') {
+                            element.textContent = Number(kpi.value).toLocaleString();
+                        } else {
+                            element.textContent = formatValue(kpi.value, metricToShow.value);
+                        }
                         element.style.transform = 'scale(1)';
                         element.style.opacity = '1';
                     }, 150);
@@ -1669,6 +1675,9 @@
                 hideLoading();
                 
                 if (data.success) {
+                    // Store data for metric changes
+                    window.lastChartData = data.data;
+                    
                     createVennDiagram(data.data);
                     createDoughnutChart(data.data); // Create doughnut chart instead of table
                     createUpSetChart(data.data); // Create UpSet chart with the same data
@@ -1764,6 +1773,30 @@
         function formatDateForBackend(dateString) {
             // Since we're using the native date picker, it already provides the correct format
             return dateString;
+        }
+        
+        // Format values based on selected metric
+        function formatValue(value, metric) {
+            if (metric === 'CO_TO') {
+                // Count metric - return as number
+                return Number(value).toLocaleString();
+            } else {
+                // Currency metrics - return as currency without decimals
+                return '$' + Number(value).toLocaleString('en-US', {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0
+                });
+            }
+        }
+        
+        // Get metric description for labels
+        function getMetricDescription(metric) {
+            const descriptions = {
+                'CO_TO': 'Count',
+                'CO_OP': '$ Impact',
+                'CO_FP': 'Final $'
+            };
+            return descriptions[metric] || 'Count';
         }
         
         // Load initial data

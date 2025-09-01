@@ -60,7 +60,7 @@ PAYER_LIST AS (
       AND P."Is Demo" = FALSE
 ),
 PAYER_RECORDS AS (
-    -- Create records for PayerID when PayerID is the target payer
+    -- When PayerID is the target payer
     SELECT 
         *,
         V1."PayerID" AS PROCESSING_PAYERID,
@@ -70,29 +70,29 @@ PAYER_RECORDS AS (
 
     UNION ALL
     
-    -- Create records for ConPayerID when ConPayerID is the target payer (excluding self-conflicts)
+    -- When ConPayerID is the target payer
     SELECT 
         *,
         V1."ConPayerID" AS PROCESSING_PAYERID,
         2 AS priority_level  -- Conflicting payer gets priority 2
     FROM COMMON_FIELDS V1
     WHERE V1."ConPayerID" IN (SELECT APID FROM PAYER_LIST)
-      AND V1."ConPayerID" != V1."PayerID"
+      AND V1."ConPayerID" != V1."PayerID" -- Excluding self-conflicts because they are covered in above query
 ),
 DEDUPLICATED_RECORDS AS (
-    -- Apply ROW_NUMBER() across all records with proper priority logic
+    -- Apply ROW_NUMBER() across all records with priority
     SELECT 
         *,
         ROW_NUMBER() OVER (
             PARTITION BY 
                 CASE
 					WHEN "AppVisitID" <= "ConAppVisitID"
-						THEN "AppVisitID" || '|' || "ConAppVisitID"
+                    THEN "AppVisitID" || '|' || "ConAppVisitID"
 					ELSE "ConAppVisitID" || '|' || "AppVisitID"
 				END
             ORDER BY 
                 priority_level,  -- Primary payer (1) gets priority over conflicting payer (2)
-                "CONFLICTID" DESC  -- Tie-breaker: higher CONFLICTID gets priority
+                "CONFLICTID" DESC  -- Tie-breaker: higher CONFLICTID gets priority, mostly for self-conflicts.
         ) as rn
     FROM PAYER_RECORDS
 )

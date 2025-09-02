@@ -119,98 +119,14 @@ ENRICHED AS (
 CLASSIFIED AS (
     SELECT
         *,
-        CASE
-            -- Time Overlap Only
-            WHEN (
-                "SameSchTimeFlag" = 'Y'
-                OR "SameVisitTimeFlag" = 'Y'
-                OR "SchAndVisitTimeSameFlag" = 'Y'
-                OR "SchOverAnotherSchTimeFlag" = 'Y'
-                OR "VisitTimeOverAnotherVisitTimeFlag" = 'Y'
-                OR "SchTimeOverVisitTimeFlag" = 'Y'
-            )
-            AND "DistanceFlag" = 'N'
-            AND "InServiceFlag" = 'N'
-            THEN 'only_to'
-
-            -- Time Distance Only
-            WHEN (
-                "SameSchTimeFlag" = 'N'
-                AND "SameVisitTimeFlag" = 'N'
-                AND "SchAndVisitTimeSameFlag" = 'N'
-                AND "SchOverAnotherSchTimeFlag" = 'N'
-                AND "VisitTimeOverAnotherVisitTimeFlag" = 'N'
-                AND "SchTimeOverVisitTimeFlag" = 'N'
-            )
-            AND "DistanceFlag" = 'Y'
-            AND "InServiceFlag" = 'N'
-            THEN 'only_td'
-
-            -- In Service Only
-            WHEN (
-                "SameSchTimeFlag" = 'N'
-                AND "SameVisitTimeFlag" = 'N'
-                AND "SchAndVisitTimeSameFlag" = 'N'
-                AND "SchOverAnotherSchTimeFlag" = 'N'
-                AND "VisitTimeOverAnotherVisitTimeFlag" = 'N'
-                AND "SchTimeOverVisitTimeFlag" = 'N'
-            )
-            AND "DistanceFlag" = 'N'
-            AND "InServiceFlag" = 'Y'
-            THEN 'only_is'
-
-            -- Time Overlap + Time Distance
-            WHEN (
-                "SameSchTimeFlag" = 'Y'
-                OR "SameVisitTimeFlag" = 'Y'
-                OR "SchAndVisitTimeSameFlag" = 'Y'
-                OR "SchOverAnotherSchTimeFlag" = 'Y'
-                OR "VisitTimeOverAnotherVisitTimeFlag" = 'Y'
-                OR "SchTimeOverVisitTimeFlag" = 'Y'
-            )
-            AND "DistanceFlag" = 'Y'
-            AND "InServiceFlag" = 'N'
-            THEN 'both_to_td'
-
-            -- Time Overlap + In Service
-            WHEN (
-                "SameSchTimeFlag" = 'Y'
-                OR "SameVisitTimeFlag" = 'Y'
-                OR "SchAndVisitTimeSameFlag" = 'Y'
-                OR "SchOverAnotherSchTimeFlag" = 'Y'
-                OR "VisitTimeOverAnotherVisitTimeFlag" = 'Y'
-                OR "SchTimeOverVisitTimeFlag" = 'Y'
-            )
-            AND "DistanceFlag" = 'N'
-            AND "InServiceFlag" = 'Y'
-            THEN 'both_to_is'
-
-            -- Time Distance + In Service
-            WHEN (
-                "SameSchTimeFlag" = 'N'
-                AND "SameVisitTimeFlag" = 'N'
-                AND "SchAndVisitTimeSameFlag" = 'N'
-                AND "SchOverAnotherSchTimeFlag" = 'N'
-                AND "VisitTimeOverAnotherVisitTimeFlag" = 'N'
-                AND "SchTimeOverVisitTimeFlag" = 'N'
-            )
-            AND "DistanceFlag" = 'Y'
-            AND "InServiceFlag" = 'Y'
-            THEN 'both_td_is'
-
-            -- All Three: Time Overlap + Time Distance + In Service
-            WHEN (
-                "SameSchTimeFlag" = 'Y'
-                OR "SameVisitTimeFlag" = 'Y'
-                OR "SchAndVisitTimeSameFlag" = 'Y'
-                OR "SchOverAnotherSchTimeFlag" = 'Y'
-                OR "VisitTimeOverAnotherVisitTimeFlag" = 'Y'
-                OR "SchTimeOverVisitTimeFlag" = 'Y'
-            )
-            AND "DistanceFlag" = 'Y'
-            AND "InServiceFlag" = 'Y'
-            THEN 'all_to_td_is'
-
+        CASE 
+            WHEN HAS_TIME_OVERLAP = 1 AND HAS_TIME_DISTANCE = 0 AND HAS_IN_SERVICE = 0 THEN 'only_to'
+            WHEN HAS_TIME_OVERLAP = 0 AND HAS_TIME_DISTANCE = 1 AND HAS_IN_SERVICE = 0 THEN 'only_td'
+            WHEN HAS_TIME_OVERLAP = 0 AND HAS_TIME_DISTANCE = 0 AND HAS_IN_SERVICE = 1 THEN 'only_is'
+            WHEN HAS_TIME_OVERLAP = 1 AND HAS_TIME_DISTANCE = 1 AND HAS_IN_SERVICE = 0 THEN 'both_to_td'
+            WHEN HAS_TIME_OVERLAP = 1 AND HAS_TIME_DISTANCE = 0 AND HAS_IN_SERVICE = 1 THEN 'both_to_is'
+            WHEN HAS_TIME_OVERLAP = 0 AND HAS_TIME_DISTANCE = 1 AND HAS_IN_SERVICE = 1 THEN 'both_td_is'
+            WHEN HAS_TIME_OVERLAP = 1 AND HAS_TIME_DISTANCE = 1 AND HAS_IN_SERVICE = 1 THEN 'all_to_td_is'
             ELSE NULL
         END AS CONTYPE,
         CASE 
@@ -296,37 +212,10 @@ WHERE "Row_Number" = 1
 
 -- Aggregated view: rollups for dashboard KPIs
 CREATE OR REPLACE VIEW CONFLICTREPORT_SANDBOX.PUBLIC.VIEW_STATE_CONFLICT_AGGREGATED AS
-WITH AGG AS (
-    SELECT 
-        PROCESSING_PAYERID AS PAYERID,
-        PROCESSING_PROVIDERID AS PROVIDERID,
-        "CRDATEUNIQUE" AS CRDATEUNIQUE,
-        CONTYPE,
-        "StatusFlag" AS STATUSFLAG,
-        COSTTYPE,
-        VISITTYPE,
-        PROCESSING_COUNTY AS COUNTY,
-        PROCESSING_SERVICECODE AS SERVICECODE,
-        COUNT(*) AS CO_TO,
-        SUM(FULL_SHIFT_AMOUNT) AS CO_SP,
-        SUM(OVERLAP_AMOUNT) AS CO_OP,
-        SUM(CASE WHEN "StatusFlag" IN ('R', 'D') THEN OVERLAP_AMOUNT ELSE 0 END) AS CO_FP
-    FROM CONFLICTREPORT_SANDBOX.PUBLIC.VIEW_STATE_CONFLICT_LIST
-    GROUP BY 
-        PROCESSING_PAYERID,
-        PROCESSING_PROVIDERID,
-        "CRDATEUNIQUE",
-        CONTYPE,
-        "StatusFlag",
-        COSTTYPE,
-        VISITTYPE,
-        PROCESSING_COUNTY,
-        PROCESSING_SERVICECODE
-)
 SELECT 
-    PAYERID,
-    PROVIDERID,
-    CRDATEUNIQUE,
+    PROCESSING_PAYERID AS PAYERID,
+    PROCESSING_PROVIDERID AS PROVIDERID,
+    CAST("CRDATEUNIQUE" AS DATE) AS CRDATEUNIQUE,
     CONTYPE,
     CASE 
         WHEN CONTYPE = 'only_to' THEN 'Time Overlap Only'
@@ -338,15 +227,23 @@ SELECT
         WHEN CONTYPE = 'all_to_td_is' THEN 'All Three (Time Overlap, Time Distance, and In Service)'
         ELSE NULL
     END AS CONTYPEDESC,
-    STATUSFLAG,
+    "StatusFlag" AS STATUSFLAG,
     COSTTYPE,
     VISITTYPE,
-    COUNTY,
-    SERVICECODE,
-    CO_TO,
-    CO_SP,
-    CO_OP,
-    CO_FP
-FROM AGG;
-
-
+    PROCESSING_COUNTY AS COUNTY,
+    PROCESSING_SERVICECODE AS SERVICECODE,
+    COUNT(*) AS CO_TO,
+    SUM(FULL_SHIFT_AMOUNT) AS CO_SP,
+    SUM(OVERLAP_AMOUNT) AS CO_OP,
+    SUM(CASE WHEN "StatusFlag" IN ('R', 'D') THEN OVERLAP_AMOUNT ELSE 0 END) AS CO_FP
+FROM CONFLICTREPORT_SANDBOX.PUBLIC.VIEW_STATE_CONFLICT_LIST
+GROUP BY 
+    PROCESSING_PAYERID,
+    PROCESSING_PROVIDERID,
+    CAST("CRDATEUNIQUE" AS DATE),
+    CONTYPE,
+    "StatusFlag",
+    COSTTYPE,
+    VISITTYPE,
+    PROCESSING_COUNTY,
+    PROCESSING_SERVICECODE;

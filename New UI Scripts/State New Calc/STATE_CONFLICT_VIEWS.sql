@@ -213,77 +213,14 @@ CLASSIFIED AS (
 
             ELSE NULL
         END AS CONTYPE,
-        CASE
-            WHEN (
-                "SameSchTimeFlag" = 'Y'
-                OR "SameVisitTimeFlag" = 'Y'
-                OR "SchAndVisitTimeSameFlag" = 'Y'
-                OR "SchOverAnotherSchTimeFlag" = 'Y'
-                OR "VisitTimeOverAnotherVisitTimeFlag" = 'Y'
-                OR "SchTimeOverVisitTimeFlag" = 'Y'
-            )
-            AND "DistanceFlag" = 'N'
-            AND "InServiceFlag" = 'N' THEN 'Time Overlap Only'
-            WHEN (
-                "SameSchTimeFlag" = 'N'
-                AND "SameVisitTimeFlag" = 'N'
-                AND "SchAndVisitTimeSameFlag" = 'N'
-                AND "SchOverAnotherSchTimeFlag" = 'N'
-                AND "VisitTimeOverAnotherVisitTimeFlag" = 'N'
-                AND "SchTimeOverVisitTimeFlag" = 'N'
-            )
-            AND "DistanceFlag" = 'Y'
-            AND "InServiceFlag" = 'N' THEN 'Time Distance Only'
-            WHEN (
-                "SameSchTimeFlag" = 'N'
-                AND "SameVisitTimeFlag" = 'N'
-                AND "SchAndVisitTimeSameFlag" = 'N'
-                AND "SchOverAnotherSchTimeFlag" = 'N'
-                AND "VisitTimeOverAnotherVisitTimeFlag" = 'N'
-                AND "SchTimeOverVisitTimeFlag" = 'N'
-            )
-            AND "DistanceFlag" = 'N'
-            AND "InServiceFlag" = 'Y' THEN 'In Service Only'
-            WHEN (
-                "SameSchTimeFlag" = 'Y'
-                OR "SameVisitTimeFlag" = 'Y'
-                OR "SchAndVisitTimeSameFlag" = 'Y'
-                OR "SchOverAnotherSchTimeFlag" = 'Y'
-                OR "VisitTimeOverAnotherVisitTimeFlag" = 'Y'
-                OR "SchTimeOverVisitTimeFlag" = 'Y'
-            )
-            AND "DistanceFlag" = 'Y'
-            AND "InServiceFlag" = 'N' THEN 'Time Overlap and Time Distance'
-            WHEN (
-                "SameSchTimeFlag" = 'Y'
-                OR "SameVisitTimeFlag" = 'Y'
-                OR "SchAndVisitTimeSameFlag" = 'Y'
-                OR "SchOverAnotherSchTimeFlag" = 'Y'
-                OR "VisitTimeOverAnotherVisitTimeFlag" = 'Y'
-                OR "SchTimeOverVisitTimeFlag" = 'Y'
-            )
-            AND "DistanceFlag" = 'N'
-            AND "InServiceFlag" = 'Y' THEN 'Time Overlap and In Service'
-            WHEN (
-                "SameSchTimeFlag" = 'N'
-                AND "SameVisitTimeFlag" = 'N'
-                AND "SchAndVisitTimeSameFlag" = 'N'
-                AND "SchOverAnotherSchTimeFlag" = 'N'
-                AND "VisitTimeOverAnotherVisitTimeFlag" = 'N'
-                AND "SchTimeOverVisitTimeFlag" = 'N'
-            )
-            AND "DistanceFlag" = 'Y'
-            AND "InServiceFlag" = 'Y' THEN 'Time Distance and In Service'
-            WHEN (
-                "SameSchTimeFlag" = 'Y'
-                OR "SameVisitTimeFlag" = 'Y'
-                OR "SchAndVisitTimeSameFlag" = 'Y'
-                OR "SchOverAnotherSchTimeFlag" = 'Y'
-                OR "VisitTimeOverAnotherVisitTimeFlag" = 'Y'
-                OR "SchTimeOverVisitTimeFlag" = 'Y'
-            )
-            AND "DistanceFlag" = 'Y'
-            AND "InServiceFlag" = 'Y' THEN 'All Three (Time Overlap, Time Distance, and In Service)'
+        CASE 
+            WHEN CONTYPE = 'only_to' THEN 'Time Overlap Only'
+            WHEN CONTYPE = 'only_td' THEN 'Time Distance Only'
+            WHEN CONTYPE = 'only_is' THEN 'In Service Only'
+            WHEN CONTYPE = 'both_to_td' THEN 'Time Overlap and Time Distance'
+            WHEN CONTYPE = 'both_to_is' THEN 'Time Overlap and In Service'
+            WHEN CONTYPE = 'both_td_is' THEN 'Time Distance and In Service'
+            WHEN CONTYPE = 'all_to_td_is' THEN 'All Three (Time Overlap, Time Distance, and In Service)'
             ELSE NULL
         END AS CONTYPEDESC,
         CASE 
@@ -359,32 +296,57 @@ WHERE "Row_Number" = 1
 
 -- Aggregated view: rollups for dashboard KPIs
 CREATE OR REPLACE VIEW CONFLICTREPORT_SANDBOX.PUBLIC.VIEW_STATE_CONFLICT_AGGREGATED AS
+WITH AGG AS (
+    SELECT 
+        PROCESSING_PAYERID AS PAYERID,
+        PROCESSING_PROVIDERID AS PROVIDERID,
+        "CRDATEUNIQUE" AS CRDATEUNIQUE,
+        CONTYPE,
+        "StatusFlag" AS STATUSFLAG,
+        COSTTYPE,
+        VISITTYPE,
+        PROCESSING_COUNTY AS COUNTY,
+        PROCESSING_SERVICECODE AS SERVICECODE,
+        COUNT(*) AS CO_TO,
+        SUM(FULL_SHIFT_AMOUNT) AS CO_SP,
+        SUM(OVERLAP_AMOUNT) AS CO_OP,
+        SUM(CASE WHEN "StatusFlag" IN ('R', 'D') THEN OVERLAP_AMOUNT ELSE 0 END) AS CO_FP
+    FROM CONFLICTREPORT_SANDBOX.PUBLIC.VIEW_STATE_CONFLICT_LIST
+    GROUP BY 
+        PROCESSING_PAYERID,
+        PROCESSING_PROVIDERID,
+        "CRDATEUNIQUE",
+        CONTYPE,
+        "StatusFlag",
+        COSTTYPE,
+        VISITTYPE,
+        PROCESSING_COUNTY,
+        PROCESSING_SERVICECODE
+)
 SELECT 
-    PROCESSING_PAYERID AS PAYERID,
-    PROCESSING_PROVIDERID AS PROVIDERID,
-    "CRDATEUNIQUE" AS CRDATEUNIQUE,
+    PAYERID,
+    PROVIDERID,
+    CRDATEUNIQUE,
     CONTYPE,
-    CONTYPEDESC,
-    "StatusFlag" AS STATUSFLAG,
+    CASE 
+        WHEN CONTYPE = 'only_to' THEN 'Time Overlap Only'
+        WHEN CONTYPE = 'only_td' THEN 'Time Distance Only'
+        WHEN CONTYPE = 'only_is' THEN 'In Service Only'
+        WHEN CONTYPE = 'both_to_td' THEN 'Time Overlap and Time Distance'
+        WHEN CONTYPE = 'both_to_is' THEN 'Time Overlap and In Service'
+        WHEN CONTYPE = 'both_td_is' THEN 'Time Distance and In Service'
+        WHEN CONTYPE = 'all_to_td_is' THEN 'All Three (Time Overlap, Time Distance, and In Service)'
+        ELSE NULL
+    END AS CONTYPEDESC,
+    STATUSFLAG,
     COSTTYPE,
     VISITTYPE,
-    PROCESSING_COUNTY AS COUNTY,
-    PROCESSING_SERVICECODE AS SERVICECODE,
-    COUNT(*) AS CO_TO,
-    SUM(FULL_SHIFT_AMOUNT) AS CO_SP,
-    SUM(OVERLAP_AMOUNT) AS CO_OP,
-    SUM(CASE WHEN "StatusFlag" IN ('R', 'D') THEN OVERLAP_AMOUNT ELSE 0 END) AS CO_FP
-FROM CONFLICTREPORT_SANDBOX.PUBLIC.VIEW_STATE_CONFLICT_LIST
-GROUP BY 
-    PROCESSING_PAYERID,
-    PROCESSING_PROVIDERID,
-    "CRDATEUNIQUE",
-    CONTYPE,
-    CONTYPEDESC,
-    "StatusFlag",
-    COSTTYPE,
-    VISITTYPE,
-    PROCESSING_COUNTY,
-    PROCESSING_SERVICECODE;
+    COUNTY,
+    SERVICECODE,
+    CO_TO,
+    CO_SP,
+    CO_OP,
+    CO_FP
+FROM AGG;
 
 

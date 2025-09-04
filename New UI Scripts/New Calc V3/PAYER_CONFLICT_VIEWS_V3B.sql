@@ -104,17 +104,14 @@ CLASSIFIED AS (
         CASE
             WHEN "BilledRateMinute" > 0 THEN
                 CASE
-                    WHEN BILLABLEMINUTESOVERLAP IS NOT NULL AND ("GROUP_SIZE" <= 2 OR "DistanceFlag" = 'Y') THEN BILLABLEMINUTESFULLSHIFT * "BilledRateMinute"
+                    WHEN BILLABLEMINUTESOVERLAP IS NOT NULL AND ("GROUP_SIZE" <= 2 OR "DistanceFlag" = 'Y') THEN BILLABLEMINUTESOVERLAP * "BilledRateMinute"
                     WHEN "ShVTSTTime" IS NOT NULL AND "ShVTENTime" IS NOT NULL 
                          AND "CShVTSTTime" IS NOT NULL AND "CShVTENTime" IS NOT NULL THEN
                         GREATEST(0,
-                            LEAST(
-                                TIMESTAMPDIFF(MINUTE, "ShVTSTTime", "ShVTENTime"),
-                                TIMESTAMPDIFF(MINUTE, "CShVTSTTime", "CShVTENTime"),
-                                TIMESTAMPDIFF(MINUTE,
-                                    GREATEST("ShVTSTTime", "CShVTSTTime"),
-                                    LEAST("ShVTENTime", "CShVTENTime")
-                                )
+                            TIMESTAMPDIFF(
+                                MINUTE,
+                                GREATEST("ShVTSTTime", "CShVTSTTime"),
+                                LEAST("ShVTENTime", "CShVTENTime")
                             )
                         ) * "BilledRateMinute"
                     ELSE 0

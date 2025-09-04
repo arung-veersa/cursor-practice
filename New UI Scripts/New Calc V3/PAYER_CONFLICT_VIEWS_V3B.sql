@@ -42,7 +42,11 @@ BASE AS (
         V1."ConPayerID",
         V1.BILLABLEMINUTESFULLSHIFT,
         V1.BILLABLEMINUTESOVERLAP,
-        GRP."GROUP_SIZE" AS "GROUP_SIZE"
+        GRP."GROUP_SIZE" AS "GROUP_SIZE",
+        V1."ProviderID",
+        V1."ServiceCode",
+        V1."P_PCounty",
+        V1."PA_PCounty"
     FROM CONFLICTREPORT_SANDBOX.PUBLIC.CONFLICTVISITMAPS AS V1
     INNER JOIN CONFLICTREPORT_SANDBOX.PUBLIC.CONFLICTS AS V2 
         ON V2."CONFLICTID" = V1."CONFLICTID"
@@ -71,7 +75,8 @@ FEATURES AS (
             ELSE 0
         END AS HAS_TIME_OVERLAP,
         CASE WHEN "DistanceFlag" = 'Y' THEN 1 ELSE 0 END AS HAS_TIME_DISTANCE,
-        CASE WHEN "InServiceFlag" = 'Y' THEN 1 ELSE 0 END AS HAS_IN_SERVICE
+        CASE WHEN "InServiceFlag" = 'Y' THEN 1 ELSE 0 END AS HAS_IN_SERVICE,
+        COALESCE("P_PCounty", "PA_PCounty") AS COUNTY
     FROM BASE
 ),
 CLASSIFIED AS (
@@ -133,6 +138,7 @@ SELECT
     "ConContract",
     "PayerID",
     "ConPayerID",
+    "ProviderID",
     "ProviderName",
     "SSN",
     "CRDATEUNIQUE",
@@ -150,9 +156,11 @@ SELECT
     "StatusFlag",
     "Billed",
     "VisitStartTime",
+    "ServiceCode",
     HAS_TIME_OVERLAP,
     HAS_TIME_DISTANCE,
     HAS_IN_SERVICE,
+    COUNTY,
     CONTYPE,
     FULL_SHIFT_AMOUNT,
     OVERLAP_AMOUNT,

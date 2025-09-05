@@ -46,7 +46,16 @@ BASE AS (
         V1."ProviderID",
         V1."ServiceCode",
         V1."P_PCounty",
-        V1."PA_PCounty"
+        V1."PA_PCounty",
+        V1."CaregiverID",
+        V1."AppCaregiverID",
+        V1."VisitDate",
+        V1."AideCode",
+        V1."AideFName",
+        V1."AideLName",
+        V1."AideSSN",
+        V1."G_CRDATEUNIQUE",
+        V1."FlagForReview"
     FROM CONFLICTREPORT_SANDBOX.PUBLIC.CONFLICTVISITMAPS AS V1
     INNER JOIN CONFLICTREPORT_SANDBOX.PUBLIC.CONFLICTS AS V2 
         ON V2."CONFLICTID" = V1."CONFLICTID"
@@ -165,18 +174,18 @@ SELECT
     VISITTYPE,
     "VisitStartTime_Status",
     PAYER_ACTIVE,
-    CONPAYER_ACTIVE
+    CONPAYER_ACTIVE,
+    "CaregiverID",
+    "AppCaregiverID",
+    "VisitDate",
+    "AideCode",
+    "AideFName",
+    "AideLName",
+    "AideSSN",
+    "G_CRDATEUNIQUE",
+    "FlagForReview"
 FROM CLASSIFIED
 WHERE CONTYPE IS NOT NULL;
-
-
--- LIST view: includes conflicts where either side payer is active; no dedup
-CREATE OR REPLACE VIEW CONFLICTREPORT_SANDBOX.PUBLIC.V_PAYER_CONFLICTS_LIST AS
-SELECT
-    *
-FROM CONFLICTREPORT_SANDBOX.PUBLIC.V_PAYER_CONFLICTS_COMMON
-WHERE (PAYER_ACTIVE OR CONPAYER_ACTIVE);
-
 
 -- AGGREGATED view: limits to payer side and dedups reverse entries only when PayerID = ConPayerID
 CREATE OR REPLACE VIEW CONFLICTREPORT_SANDBOX.PUBLIC.V_PAYER_CONFLICTS_AGGREGATED_COMMON AS
@@ -207,3 +216,85 @@ DEDUP AS (
 SELECT 
     *
 FROM DEDUP
+
+
+CREATE OR REPLACE VIEW CONFLICTREPORT_SANDBOX.PUBLIC.V_PAYER_CONFLICTS_LIST AS
+SELECT 
+    "ID",
+    "GroupID",
+    "SSN",
+    "CaregiverID",
+    "AppCaregiverID",
+    "VisitID",
+    "AppVisitID",
+    "VisitDate",
+    "AideCode",
+    "AideFName",
+    "AideLName",
+    COALESCE("AideSSN", "SSN") AS "AideSSN",
+    "G_CRDATEUNIQUE" AS "CRDATEUNIQUE",
+    "PayerID",
+    "Contract",
+    "FlagForReview",
+    RN
+FROM V_PAYER_CONFLICTS_AGGREGATED_COMMON
+WHERE RN = 1
+ORDER BY "GroupID" DESC;
+
+
+--- OLD
+-- LIST view: includes conflicts where either side payer is active; no dedup
+CREATE OR REPLACE VIEW CONFLICTREPORT_SANDBOX.PUBLIC.V_PAYER_CONFLICTS_LIST_OLD AS
+SELECT
+    *
+FROM CONFLICTREPORT_SANDBOX.PUBLIC.V_PAYER_CONFLICTS_COMMON
+WHERE (PAYER_ACTIVE OR CONPAYER_ACTIVE);
+
+
+CREATE OR REPLACE VIEW CONFLICTREPORT_SANDBOX.PUBLIC.V_PAYER_CONFLICTS_LIST_OLD1 AS
+WITH SOURCE AS (
+    SELECT 
+        *
+    FROM CONFLICTREPORT_SANDBOX.PUBLIC.V_PAYER_CONFLICTS_COMMON
+    WHERE PAYER_ACTIVE
+),
+DEDUP AS (
+    SELECT
+        *,
+        ROW_NUMBER() OVER (
+            PARTITION BY 
+                "PayerID",
+                CASE
+                    WHEN "PayerID" = "ConPayerID" THEN
+                        CASE
+                            WHEN "AppVisitID" <= "ConAppVisitID" THEN "AppVisitID" || '|' || "ConAppVisitID"
+                            ELSE "ConAppVisitID" || '|' || "AppVisitID"
+                        END
+                    ELSE
+                        "AppVisitID" || '|' || "ConAppVisitID"
+                END
+            ORDER BY "CONFLICTID" DESC
+        ) AS RN
+    FROM SOURCE
+)
+SELECT 
+    "ID",
+    "GroupID",
+    "SSN",
+    "CaregiverID",
+    "AppCaregiverID",
+    "VisitID",
+    "AppVisitID",
+    "VisitDate",
+    "AideCode",
+    "AideFName",
+    "AideLName",
+    COALESCE("AideSSN", "SSN") AS "AideSSN",
+    "G_CRDATEUNIQUE" AS "CRDATEUNIQUE",
+    "PayerID",
+    "Contract",
+    "FlagForReview",
+    RN
+FROM DEDUP
+WHERE RN = 1
+ORDER BY "GroupID" DESC;

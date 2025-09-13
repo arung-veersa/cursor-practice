@@ -1,24 +1,23 @@
 -- CONFLICTREPORT_SANDBOX.PUBLIC.V_PAYER_CONFLICTS_COMMON source
 
 create or replace view CONFLICTREPORT_SANDBOX.PUBLIC.TMP_AG_V_PAYER_CONFLICTS_COMMON AS
-WITH PAYER_LIST AS (
+WITH ACTIVE_PAYER_IDS AS (
     SELECT P."Payer Id" AS APID
     FROM ANALYTICS_SANDBOX.BI.DIMPAYER AS P 
     WHERE P."Is Active" = TRUE 
       AND P."Is Demo" = FALSE
 ),
-FILTERED_BASE AS (
-    -- Single WHERE condition + GROUP_SIZE window function
-    SELECT 
-        V1.*, 
-        V2."NoResponseFlag", 
-        V2."StatusFlag" AS "OrgParentStatusFlag",
-        COUNT(DISTINCT V1."CONFLICTID") OVER (PARTITION BY V1."GroupID") AS "GROUP_SIZE"
+FILTERED_IDS AS (
+    SELECT
+        V1."GroupID",
+        V1."CONFLICTID"
     FROM CONFLICTREPORT_SANDBOX.PUBLIC.CONFLICTVISITMAPS AS V1
-    INNER JOIN CONFLICTREPORT_SANDBOX.PUBLIC.CONFLICTS AS V2 
-        ON V2."CONFLICTID" = V1."CONFLICTID"
-    INNER JOIN PAYER_LIST PL ON PL.APID = V1."PayerID"
-    WHERE NOT (V1."PTOFlag" = 'Y'
+    WHERE EXISTS (
+            SELECT 1
+            FROM ACTIVE_PAYER_IDS PL
+            WHERE PL.APID = V1."PayerID"
+        )
+      AND NOT (V1."PTOFlag" = 'Y'
         AND V1."SameSchTimeFlag" = 'N'
         AND V1."SameVisitTimeFlag" = 'N'
         AND V1."SchAndVisitTimeSameFlag" = 'N'
@@ -28,7 +27,26 @@ FILTERED_BASE AS (
         AND V1."DistanceFlag" = 'N'
         AND V1."InServiceFlag" = 'N')
 ),
-DEDUPLICATED AS (
+GROUP_SIZES AS (
+    SELECT
+        "GroupID",
+        COUNT(DISTINCT "CONFLICTID") AS "GROUP_SIZE"
+    FROM FILTERED_IDS
+    GROUP BY "GroupID"
+),
+VISITS_PRE_FILTERED AS (
+    -- Join pre-aggregated group sizes; carry only needed columns via V1.* for simplicity
+    SELECT
+        V1.*, 
+        GS."GROUP_SIZE"
+    FROM CONFLICTREPORT_SANDBOX.PUBLIC.CONFLICTVISITMAPS AS V1
+    INNER JOIN FILTERED_IDS FI
+        ON FI."CONFLICTID" = V1."CONFLICTID"
+       AND FI."GroupID"    = V1."GroupID"
+    INNER JOIN GROUP_SIZES GS
+        ON GS."GroupID" = V1."GroupID"
+),
+VISITS_DEDUP AS (
     SELECT *,
         ROW_NUMBER() OVER (
             PARTITION BY 
@@ -44,16 +62,21 @@ DEDUPLICATED AS (
                 END
             ORDER BY "CONFLICTID" DESC
         ) AS RN
-    FROM FILTERED_BASE
+    FROM VISITS_PRE_FILTERED
 ),
-BASE AS (
+VISITS_TOP AS (
+    SELECT *
+    FROM VISITS_DEDUP
+    QUALIFY RN = 1
+),
+VISITS_ENRICHED AS (
     SELECT 
-        -- === PRIMARY IDENTIFIERS ===
+        -- IDs
         V1.ID,
         V1."CONFLICTID",
         V1."GroupID",
         
-        -- === CONTRACT & PROVIDER INFORMATION ===
+        -- Provider & Contract
         V1."PayerID",
         V1."ConPayerID",
         V1."Contract",
@@ -63,13 +86,13 @@ BASE AS (
         V1."AgencyContact",
         V1."AgencyPhone",
         
-        -- === VISIT IDENTIFIERS ===
+        -- Visit IDs
         V1."AppVisitID",
         V1."ConAppVisitID",
         V1."VisitID",
         V1."ConVisitID",
         
-        -- === CAREGIVER INFORMATION ===
+        -- Caregiver
         V1."CaregiverID",
         V1."AppCaregiverID",
         V1."AideCode",
@@ -78,7 +101,7 @@ BASE AS (
         V1."AideSSN",
         V1."SSN",
         
-        -- === PATIENT INFORMATION ===
+        -- Patient
         V1."PA_PatientID",
         V1."PA_PName",
         V1."PA_PAdmissionID",
@@ -89,7 +112,7 @@ BASE AS (
         V1."PA_PCounty",
         V1."P_PCounty",
         
-        -- === TIME INFORMATION ===
+        -- Time
         V1."VisitDate",
         V1."VisitStartTime",
         V1."VisitEndTime",
@@ -102,7 +125,7 @@ BASE AS (
         V1."CShVTSTTime",
         V1."CShVTENTime",
         
-        -- === BILLING INFORMATION ===
+        -- Billing
         V1."BilledRateMinute",
         V1."BilledHours",
         V1."BilledDate",
@@ -111,7 +134,7 @@ BASE AS (
         V1.BILLABLEMINUTESFULLSHIFT,
         V1.BILLABLEMINUTESOVERLAP,
         
-        -- === CONFLICT FLAGS ===
+        -- Flags
         V1."SameSchTimeFlag",
         V1."SameVisitTimeFlag",
         V1."SchAndVisitTimeSameFlag",
@@ -122,34 +145,36 @@ BASE AS (
         V1."InServiceFlag",
         V1."PTOFlag",
         
-        -- === STATUS & CONTROL FIELDS ===
+        -- Status
         V1."StatusFlag",
-        V1."OrgParentStatusFlag",
+        V2."StatusFlag" AS "OrgParentStatusFlag",
         V1."FlagForReview",
         V1."IsMissed",
         V1."MissedVisitReason",
-        V1."NoResponseFlag",
+        V2."NoResponseFlag",
         V1."ServiceCode",
         V1."EVVType",
         V1."DistanceMilesFromLatLng",
         V1."OfficeID",
         DO."Office Name" AS "Office",
         
-        -- === AUDIT FIELDS ===
+        -- Audit
         V1."LastUpdatedBy",
         V1."LastUpdatedDate",
         V1."CRDATEUNIQUE",
         V1."G_CRDATEUNIQUE",
         
-        -- === CALCULATED FIELDS ===
+        -- Calculated
         V1."GROUP_SIZE" AS "GROUP_SIZE",
         V1.RN
 				
-    FROM DEDUPLICATED AS V1
+    FROM VISITS_TOP AS V1
     LEFT JOIN ANALYTICS_SANDBOX.BI.DIMOFFICE AS DO 
         ON DO."Office Id" = V1."OfficeID"
+    INNER JOIN CONFLICTREPORT_SANDBOX.PUBLIC.CONFLICTS AS V2 
+        ON V2."CONFLICTID" = V1."CONFLICTID"
 ),
-FEATURES AS (
+TIME_AND_AMOUNTS AS (
     SELECT
         *,
         CASE 
@@ -178,9 +203,9 @@ FEATURES AS (
 				)
 			ELSE 0
 		END AS OVERLAP_MIN
-    FROM BASE
+    FROM VISITS_ENRICHED
 ),
-CLASSIFIED AS (
+CLASSIFICATION AS (
     SELECT
         *,
         COALESCE("P_PCounty", "PA_PCounty") AS COUNTY,
@@ -207,37 +232,39 @@ CLASSIFIED AS (
 				FULL_SHIFT_MIN * "BilledRateMinute"
             ELSE 0
         END AS FULL_SHIFT_AMOUNT,
+        
         CASE
             WHEN "BilledRateMinute" > 0 THEN
                 OVERLAP_MIN * "BilledRateMinute"
             ELSE 0
         END AS OVERLAP_AMOUNT,
-		CASE WHEN "StatusFlag" = 'R' THEN OVERLAP_AMOUNT ELSE 0 END AS FINAL_AMOUNT,
+		
+        CASE WHEN "StatusFlag" = 'R' THEN OVERLAP_AMOUNT ELSE 0 END AS FINAL_AMOUNT,
         CASE WHEN "Billed" = 'yes' THEN 'Recovery' ELSE 'Avoidance' END AS COSTTYPE,
+        
         CASE 
             WHEN "VisitStartTime" IS NULL THEN 'Scheduled'
-            WHEN "Billed" != 'yes' THEN 'Confirmed'
-            WHEN "Billed" = 'yes' THEN 'Billed'
-        END AS VISITTYPE,
-        CASE WHEN "VisitStartTime" IS NULL THEN 'NULL' ELSE 'NOT NULL' END AS "VisitStartTime_Status",
-        DATEDIFF(day, G_CRDATEUNIQUE, CURRENT_DATE) AS "AgingDays"
-    FROM FEATURES
+            WHEN COALESCE("Billed", 'no') != 'yes' THEN 'Confirmed'
+            ELSE 'Billed'
+        END AS VISITTYPE
+
+    FROM TIME_AND_AMOUNTS
 )
 SELECT
     *
-FROM CLASSIFIED
+FROM CLASSIFICATION
 WHERE CONTYPE IS NOT NULL;
 
 -- CONFLICTREPORT_SANDBOX.PUBLIC.V_PAYER_CONFLICTS_LIST source
 
 create or replace view CONFLICTREPORT_SANDBOX.PUBLIC.TMP_AG_V_PAYER_CONFLICTS_LIST AS
 SELECT 
-    -- === PRIMARY IDENTIFIERS ===
+    -- IDs
     "ID",
     "GroupID",
     "CONFLICTID",
     
-    -- === PROVIDER & CONTRACT INFORMATION ===
+    -- Provider & Contract
     "PayerID",
     "PayerID" AS "APID",
     "Contract",
@@ -248,7 +275,7 @@ SELECT
     "OfficeID",
     "Office",
 
-    -- === CAREGIVER INFORMATION ===
+    -- Caregiver
     "CaregiverID",
     "AppCaregiverID",
     "AideCode",
@@ -257,7 +284,7 @@ SELECT
     COALESCE("AideSSN", "SSN") AS "AideSSN",
     "SSN",
     
-    -- === PATIENT INFORMATION ===
+    -- Patient
     "PA_PatientID",
     "PA_PName",
     "PA_PAdmissionID",
@@ -265,7 +292,7 @@ SELECT
     "PA_PLName",
     "PA_PMedicaidNumber",
 
-    -- === VISIT INFORMATION ===
+    -- Visit
     "VisitID",
     "AppVisitID",
     "VisitDate",
@@ -274,13 +301,13 @@ SELECT
     "ShVTSTTime",
     "ShVTENTime",
     
-    -- === SCHEDULED TIME INFORMATION ===
+    -- Schedule
     "SchStartTime",
     "SchEndTime",
     "EVVStartTime",
     "EVVEndTime",
     
-    -- === CONFLICT CLASSIFICATION ===
+    -- Classification
     CONTYPEOLD,
     "SameSchTimeFlag",
     "SameVisitTimeFlag",
@@ -292,7 +319,7 @@ SELECT
     "PTOFlag",
     "InServiceFlag",
     
-    -- === BILLING INFORMATION ===
+    -- Billing
     "BilledRateMinute" * 60 AS "BilledRate",
     "BilledHours",
     "BilledDate",
@@ -303,18 +330,17 @@ SELECT
     OVERLAP_AMOUNT as "OverlapPrice",
     FINAL_AMOUNT as "FinalPrice",
     
-    -- === STATUS & CONTROL FIELDS ===
+    -- Status
     "StatusFlag",
     "FlagForReview",
     RN,
     
-    -- === AUDIT FIELDS ===
+    -- Audit
     "LastUpdatedBy",
     "LastUpdatedDate",
     "G_CRDATEUNIQUE" AS "CRDATEUNIQUE",
-    "AgingDays"
+    DATEDIFF(day, G_CRDATEUNIQUE, CURRENT_DATE) AS "AgingDays"
     
 FROM CONFLICTREPORT_SANDBOX.PUBLIC.TMP_AG_V_PAYER_CONFLICTS_COMMON
-WHERE RN = 1
 ORDER BY "GroupID" DESC;
 

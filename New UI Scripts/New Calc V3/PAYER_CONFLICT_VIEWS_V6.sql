@@ -1,7 +1,6 @@
 -- CONFLICTREPORT_SANDBOX.PUBLIC.V_PAYER_CONFLICTS_COMMON source
--- Common view with shared logic, parameterized deduplication strategy
 
-create or replace view CONFLICTREPORT_SANDBOX.PUBLIC.TMP_AG_V_PAYER_CONFLICTS_COMMON AS
+create or replace view CONFLICTREPORT_SANDBOX.PUBLIC.V_PAYER_CONFLICTS_COMMON AS
 WITH ACTIVE_PAYER_IDS AS (
     SELECT P."Payer Id" AS APID
     FROM ANALYTICS_SANDBOX.BI.DIMPAYER AS P 
@@ -66,23 +65,12 @@ VISITS_DEDUP AS (
         ) AS RN_RESTRICTED,
         ROW_NUMBER() OVER (
             PARTITION BY 
-                "PayerID",
                 CASE
                     WHEN "AppVisitID" <= "ConAppVisitID" THEN "AppVisitID" || '|' || "ConAppVisitID"
                     ELSE "ConAppVisitID" || '|' || "AppVisitID"
                 END
             ORDER BY "CONFLICTID" DESC
-        ) AS RN_WIDE,
-        ROW_NUMBER() OVER (
-            PARTITION BY 
-                CASE
-                    WHEN (TRY_TO_NUMBER("AppPayerID") < TRY_TO_NUMBER("ConAppPayerID"))
-                         OR (TRY_TO_NUMBER("AppPayerID") = TRY_TO_NUMBER("ConAppPayerID") AND TRY_TO_NUMBER("AppVisitID") <= TRY_TO_NUMBER("ConAppVisitID"))
-                    THEN "AppPayerID" || '|' || "AppVisitID" || '||' || "ConAppPayerID" || '|' || "ConAppVisitID"
-                    ELSE "ConAppPayerID" || '|' || "ConAppVisitID" || '||' || "AppPayerID" || '|' || "AppVisitID"
-                END
-            ORDER BY "CONFLICTID" DESC
-        ) AS RN_CROSS
+        ) AS RN_WIDE
     FROM VISITS_PRE_FILTERED AS V1
 ),
 VISITS_TOP AS (
@@ -189,8 +177,7 @@ VISITS_ENRICHED AS (
         -- Calculated
         V1."GROUP_SIZE" AS "GROUP_SIZE",
         V1.RN_RESTRICTED,
-        V1.RN_WIDE,
-        V1.RN_CROSS
+        V1.RN_WIDE
 				
     FROM VISITS_TOP AS V1
     INNER JOIN CONFLICTREPORT_SANDBOX.PUBLIC.CONFLICTS AS V2 
@@ -277,11 +264,9 @@ SELECT
 FROM CLASSIFICATION
 WHERE CONTYPE IS NOT NULL;
 
-
 -- CONFLICTREPORT_SANDBOX.PUBLIC.V_PAYER_CONFLICTS_LIST_BASE source
--- Common field list base view
 
-create or replace view CONFLICTREPORT_SANDBOX.PUBLIC.TMP_AG_V_PAYER_CONFLICTS_LIST_BASE AS
+create or replace view CONFLICTREPORT_SANDBOX.PUBLIC.V_PAYER_CONFLICTS_LIST_BASE AS
 SELECT 
     -- IDs
     "ID",
@@ -365,7 +350,6 @@ SELECT
     "FlagForReview",
     RN_RESTRICTED,
     RN_WIDE,
-    RN_CROSS,
 	"ServiceCode",
 	"PA_PStatus",
 	"IsMissed",
@@ -379,24 +363,20 @@ SELECT
     "G_CRDATEUNIQUE" AS "CRDATEUNIQUE",
     DATEDIFF(day, G_CRDATEUNIQUE, CURRENT_DATE) AS "AgingDays"
 	
-FROM CONFLICTREPORT_SANDBOX.PUBLIC.TMP_AG_V_PAYER_CONFLICTS_COMMON
+FROM CONFLICTREPORT_SANDBOX.PUBLIC.V_PAYER_CONFLICTS_COMMON
 ORDER BY "GroupID" DESC;
 
-
 -- CONFLICTREPORT_SANDBOX.PUBLIC.V_PAYER_CONFLICTS_LIST source
--- Include all entries (no reverse elimination) as requested
 
-create or replace view CONFLICTREPORT_SANDBOX.PUBLIC.TMP_AG_V_PAYER_CONFLICTS_LIST AS
+create or replace view CONFLICTREPORT_SANDBOX.PUBLIC.V_PAYER_CONFLICTS_LIST AS
 SELECT *
-FROM CONFLICTREPORT_SANDBOX.PUBLIC.TMP_AG_V_PAYER_CONFLICTS_LIST_BASE;
-
+FROM CONFLICTREPORT_SANDBOX.PUBLIC.V_PAYER_CONFLICTS_LIST_BASE;
 
 -- CONFLICTREPORT_SANDBOX.PUBLIC.V_PAYER_CONFLICTS_LIST_COUNT source
--- Uses wide deduplication for counting purposes
 
-create or replace view CONFLICTREPORT_SANDBOX.PUBLIC.TMP_AG_V_PAYER_CONFLICTS_LIST_COUNT AS
+create or replace view CONFLICTREPORT_SANDBOX.PUBLIC.V_PAYER_CONFLICTS_LIST_COUNT AS
 SELECT 
     *,
-    RN_CROSS AS RN
-FROM CONFLICTREPORT_SANDBOX.PUBLIC.TMP_AG_V_PAYER_CONFLICTS_LIST_BASE
-WHERE RN_CROSS = 1;
+    RN_WIDE AS RN
+FROM CONFLICTREPORT_SANDBOX.PUBLIC.V_PAYER_CONFLICTS_LIST_BASE
+WHERE RN_WIDE = 1;
